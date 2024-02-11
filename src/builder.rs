@@ -166,7 +166,7 @@
 //         true
 //     }
 // }
-use std::{cmp::max, sync::{Arc, Mutex}};
+use std::{cmp::max, sync::{Arc, RwLock}};
 use futures::StreamExt;
 use rayon::prelude::*;
 
@@ -180,14 +180,14 @@ pub struct LevelGates<F: Field> {
 
 #[derive(Debug)]
 pub struct EqualityAssertion<F: Field> {
-    left_node: Arc<Mutex<Node<F>>>,
-    right_node: Arc<Mutex<Node<F>>>,
+    left_node: Arc<RwLock<Node<F>>>,
+    right_node: Arc<RwLock<Node<F>>>,
 }
 
 #[derive(Debug, Default)]
 pub struct Builder<F: Field> {
-    input_nodes: Vec<Arc<Mutex<Node<F>>>>,
-    constant_nodes: Vec<Arc<Mutex<Node<F>>>>,
+    input_nodes: Vec<Arc<RwLock<Node<F>>>>,
+    constant_nodes: Vec<Arc<RwLock<Node<F>>>>,
     gates_per_level: Vec<LevelGates<F>>,
     assertions: Vec<EqualityAssertion<F>>,
     internal_count: u64,
@@ -208,17 +208,17 @@ impl<F: Field> Node<F> {
 
 #[derive(Debug)]
 pub struct AddGate<F: Field> {
-    left_input: Arc<Mutex<Node<F>>>,
-    right_input: Arc<Mutex<Node<F>>>,
-    output: Arc<Mutex<Node<F>>>,
+    left_input: Arc<RwLock<Node<F>>>,
+    right_input: Arc<RwLock<Node<F>>>,
+    output: Arc<RwLock<Node<F>>>,
     depth: u64,
 }
 
 #[derive(Debug)]
 pub struct MultiplyGate<F: Field> {
-    left_input: Arc<Mutex<Node<F>>>,
-    right_input: Arc<Mutex<Node<F>>>,
-    output: Arc<Mutex<Node<F>>>,
+    left_input: Arc<RwLock<Node<F>>>,
+    right_input: Arc<RwLock<Node<F>>>,
+    output: Arc<RwLock<Node<F>>>,
     depth: u64,
 }
 
@@ -233,8 +233,8 @@ impl<F: Field> Builder<F> {
         }
     }
     
-    pub fn init(&mut self) -> Arc<Mutex<Node<F>>> {
-        let node = Arc::new(Mutex::new(Node {
+    pub fn init(&mut self) -> Arc<RwLock<Node<F>>> {
+        let node = Arc::new(RwLock::new(Node {
             value: None,
             depth: 0,
             id: self.internal_count,
@@ -244,8 +244,8 @@ impl<F: Field> Builder<F> {
         node
     }
     
-    pub fn constant(&mut self, value: F) -> Arc<Mutex<Node<F>>> {
-        let node = Arc::new(Mutex::new(Node {
+    pub fn constant(&mut self, value: F) -> Arc<RwLock<Node<F>>> {
+        let node = Arc::new(RwLock::new(Node {
             value: Some(value),
             depth: 0,
             id: self.internal_count,
@@ -255,13 +255,13 @@ impl<F: Field> Builder<F> {
         node
     }
     
-    pub fn add(&mut self, a: &Arc<Mutex<Node<F>>>, b: &Arc<Mutex<Node<F>>>) -> Arc<Mutex<Node<F>>> {
-        let a_depth = a.lock().unwrap().depth;
-        let b_depth = b.lock().unwrap().depth;
+    pub fn add(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> Arc<RwLock<Node<F>>> {
+        let a_depth = a.read().unwrap().depth;
+        let b_depth = b.read().unwrap().depth;
 
         let depth_gate = max(a_depth, b_depth);
 
-        let output_node = Arc::new(Mutex::new(Node {
+        let output_node = Arc::new(RwLock::new(Node {
             value: None,
             depth: depth_gate + 1,
             id: self.internal_count,
@@ -287,13 +287,13 @@ impl<F: Field> Builder<F> {
         output_node
     }
     
-    pub fn mul(&mut self, a: &Arc<Mutex<Node<F>>>, b: &Arc<Mutex<Node<F>>>) -> Arc<Mutex<Node<F>>> {
-        let a_depth = a.lock().unwrap().depth;
-        let b_depth = b.lock().unwrap().depth;
+    pub fn mul(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> Arc<RwLock<Node<F>>> {
+        let a_depth = a.read().unwrap().depth;
+        let b_depth = b.read().unwrap().depth;
 
         let depth_gate = max(a_depth, b_depth);
         
-        let output_node = Arc::new(Mutex::new(Node {
+        let output_node = Arc::new(RwLock::new(Node {
             value: None,
             depth: depth_gate + 1,
             id: self.internal_count,
@@ -319,7 +319,7 @@ impl<F: Field> Builder<F> {
         output_node
     }
     
-    pub fn assert_equal(&mut self, a: &Arc<Mutex<Node<F>>>, b: &Arc<Mutex<Node<F>>>) {
+    pub fn assert_equal(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) {
         let assertion = EqualityAssertion {
             left_node: a.clone(),
             right_node: b.clone(),
@@ -331,7 +331,7 @@ impl<F: Field> Builder<F> {
         self.input_nodes.par_iter()
             .zip(node_values.into_par_iter())
             .for_each(|(node, value)| {
-                    let mut locked_node = node.lock().unwrap();
+                    let mut locked_node = node.write().unwrap();
                     locked_node.value = Some(value);
             });
     
@@ -341,39 +341,36 @@ impl<F: Field> Builder<F> {
             let multiply_gates = &level_gate.multiplier_gates; 
 
             add_gates.par_iter().for_each(|gate| {
-                let mut output = gate.output.lock().unwrap();
-                let left_value = gate.left_input.lock().unwrap().value.unwrap();
-                let right_value = gate.right_input.lock().unwrap().value.unwrap();
+                let mut output = gate.output.write().unwrap();
+                let left_value = gate.left_input.read().unwrap().value.unwrap();
+                let right_value = gate.right_input.read().unwrap().value.unwrap();
                 output.set_value(Some(left_value + right_value));
             });
 
             multiply_gates.par_iter().for_each(|gate| {
-                let mut output = gate.output.lock().unwrap();
-                let left_value = gate.left_input.lock().unwrap().value.unwrap();
-                let right_value = gate.right_input.lock().unwrap().value.unwrap();
+                let mut output = gate.output.write().unwrap();
+                let left_value = gate.left_input.read().unwrap().value.unwrap();
+                let right_value = gate.right_input.read().unwrap().value.unwrap();
                 output.set_value(Some(left_value * right_value));
             });
         }
     }
 
-
-    
-    
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
             let future_left_value = async {
-                assertion.left_node.lock().unwrap().value.unwrap()
+                assertion.left_node.read().unwrap().value.unwrap()
             };
             let future_left_value = future_left_value.await;
 
             let future_right_value = async {
-                assertion.right_node.lock().unwrap().value.unwrap()
+                assertion.right_node.read().unwrap().value.unwrap()
             };
             let future_right_value = future_right_value.await;
             
             if future_left_value != future_right_value {
-                let left_value = assertion.left_node.lock().unwrap();
-                let right_value = assertion.right_node.lock().unwrap();
+                let left_value = assertion.left_node.read().unwrap();
+                let right_value = assertion.right_node.read().unwrap();
 
                 eprintln!("Equality failed at following nodes: {:?}, {:?}", left_value, right_value);
                 return false;

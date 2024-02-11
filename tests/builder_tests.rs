@@ -57,8 +57,8 @@ async fn test_constraints() {
     println!("{:?}", b);
 }
 
-#[test]
-fn test_large_input() {
+#[tokio::test]
+async fn test_large_input() {
     let n: usize = 25; 
 
     let num_inputs = 2_i32.pow(n as u32); 
@@ -88,10 +88,16 @@ fn test_large_input() {
         builder.mul(&intermediates[(2*i) as usize], &intermediates[(2*i + 1) as usize]); 
     }
 
+    for i in 0..num_inputs-1 {
+        builder.assert_equal(&inputs[i as usize], &inputs[(i+1) as usize]);
+    }
+
     let start_time = Instant::now();
-    builder.fill_nodes(vec![Fp::from(2); num_inputs as usize]);
-    let end_time = Instant::now();
+    builder.fill_nodes(vec![Fp::from(1); num_inputs as usize]);
+    let check_constraints = builder.check_constraints().await;
+    let end_time = Instant::now();    
 
     let elapsed_time = end_time - start_time;
     println!("Elapsed time: {:?}", elapsed_time);
+    println!("Constraints Passed? {:?}", check_constraints);
 }
