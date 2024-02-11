@@ -24,6 +24,8 @@ byteorder = { version = "1.4.3" }
 rand = "0.8"
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 rayon = "1.8.1"
+futures = "0.3"
+tokio = { version = "1", features = ["full"] }
 
 [lib]
 path = "src/lib.rs"

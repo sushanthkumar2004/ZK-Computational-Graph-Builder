@@ -35,8 +35,8 @@ fn test_multiple_access() {
     println!("{:?}", x_squared_4);
 }
 
-#[test]
-fn test_constraints() {
+#[tokio::test]
+async fn test_constraints() {
     let mut builder = Builder::<Fp>::new();
     let a = builder.init();
     let one = builder.constant(Fp::from(1)); 
@@ -50,7 +50,9 @@ fn test_constraints() {
     builder.fill_nodes(vec![Fp::from(15), Fp::from(2)]);
     builder.assert_equal(&c_times_8, &b);
 
-    println!("{:?}", builder.check_constraints()); 
+    let constraint_check = builder.check_constraints().await; 
+
+    println!("{:?}", constraint_check); 
     println!("{:?}", c_times_8);
     println!("{:?}", b);
 }

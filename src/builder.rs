@@ -166,7 +166,8 @@
 //         true
 //     }
 // }
-use std::{cmp::max, ops::Add, sync::{Arc, Mutex}, thread};
+use std::{cmp::max, sync::{Arc, Mutex}};
+use futures::StreamExt;
 use rayon::prelude::*;
 
 use crate::field::Field;
@@ -358,12 +359,23 @@ impl<F: Field> Builder<F> {
 
     
     
-    pub fn check_constraints(&mut self) -> bool {
+    pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
-            let left_value = assertion.left_node.lock().unwrap().value;
-            let right_value = assertion.right_node.lock().unwrap().value;
-            if left_value != right_value {
-                eprintln!("Equality failed at following nodes: {:?}, {:?}", assertion.left_node.lock().unwrap(), assertion.right_node.lock().unwrap());
+            let future_left_value = async {
+                assertion.left_node.lock().unwrap().value.unwrap()
+            };
+            let future_left_value = future_left_value.await;
+
+            let future_right_value = async {
+                assertion.right_node.lock().unwrap().value.unwrap()
+            };
+            let future_right_value = future_right_value.await;
+            
+            if future_left_value != future_right_value {
+                let left_value = assertion.left_node.lock().unwrap();
+                let right_value = assertion.right_node.lock().unwrap();
+
+                eprintln!("Equality failed at following nodes: {:?}, {:?}", left_value, right_value);
                 return false;
             }
         }
