@@ -1,4 +1,5 @@
 use std::{cmp::max, sync::{Arc, RwLock}};
+use futures::future;
 use rayon::prelude::*;
 
 use crate::field::Field;
@@ -9,7 +10,7 @@ pub struct LevelGates<F: Field> {
     multiplier_gates: Vec<MultiplyGate<F>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EqualityAssertion<F: Field> {
     left_node: Arc<RwLock<Node<F>>>,
     right_node: Arc<RwLock<Node<F>>>,
@@ -143,6 +144,10 @@ impl<F: Field> Builder<F> {
         }
         output_node
     }
+
+    fn batch_add(&mut self, left_arguments: &[Arc<RwLock<Node<F>>>], right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
+        todo!()
+    }
     
     pub fn mul(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> Arc<RwLock<Node<F>>> {
         let a_depth = a.read().unwrap().depth;
@@ -175,13 +180,30 @@ impl<F: Field> Builder<F> {
         }
         output_node
     }
+
+    fn batch_multiply(&mut self, left_arguments: &[Arc<RwLock<Node<F>>>], right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
+        todo!()
+    }
     
-    pub fn assert_equal(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) {
+    pub fn assert_equal(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> EqualityAssertion<F> {
         let assertion = EqualityAssertion {
             left_node: a.clone(),
             right_node: b.clone(),
         };
-        self.assertions.push(assertion);
+        self.assertions.push(assertion.clone());
+        assertion
+    }
+
+    pub fn batch_assert_equal(&mut self, left_args: &[Arc<RwLock<Node<F>>>], right_args: &[Arc<RwLock<Node<F>>>]) -> Vec<EqualityAssertion<F>> {
+        assert_eq!(left_args.len(), right_args.len());
+
+        let new_assertions: Vec<EqualityAssertion<F>> = (0..right_args.len()).into_par_iter().map(|i| {
+            EqualityAssertion {
+                left_node: left_args[i].clone(),
+                right_node: right_args[i].clone(),
+            }}).collect();
+        self.assertions.extend(new_assertions.clone());
+        new_assertions
     }
     
     pub fn fill_nodes(&mut self, node_values: Vec<F>) {

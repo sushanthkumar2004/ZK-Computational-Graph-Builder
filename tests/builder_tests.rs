@@ -1,6 +1,4 @@
-use futures::SinkExt;
 use takehome::{builder::Builder, builder_deprecated::BuilderSingleThread, field::GaloisField};
-use core::num;
 use std::time::Instant;
 
 pub type Fp = GaloisField::<65537>;
@@ -107,10 +105,7 @@ async fn test_large_input() {
         builder.mul(&constants[i as usize], &inputs[i as usize]);
     }
 
-    for i in 0..num_inputs-1 {
-        builder.assert_equal(&inputs[i as usize], &inputs[(i+1) as usize]);
-    }
-
+    builder.batch_assert_equal(&inputs, &inputs);
     builder.fill_nodes(vec![Fp::from(1); num_inputs as usize]);
     let check_constraints = builder.check_constraints().await;
     let end_time = Instant::now();    
@@ -144,7 +139,6 @@ fn test_large_input_deprecated() {
     for i in 0..num_inputs/4 {
         intermediates.push(builder.add(&inputs[(2*i) as usize], &inputs[(2*i + 1) as usize])); 
     }
-
     for i in num_inputs/4..num_inputs/2 {
         intermediates.push(builder.mul(&inputs[(2*i) as usize], &inputs[(2*i + 1) as usize])); 
     }
@@ -161,8 +155,8 @@ fn test_large_input_deprecated() {
         builder.mul(&constants[i as usize], &inputs[i as usize]);
     }
 
-    for i in 0..num_inputs-1 {
-        builder.assert_equal(&inputs[i as usize], &inputs[(i+1) as usize]);
+    for i in 0..num_inputs {
+        builder.assert_equal(&inputs[i as usize], &inputs[i as usize]);
     }
 
     builder.fill_nodes(vec![1; num_inputs as usize]);
