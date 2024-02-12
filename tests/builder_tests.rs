@@ -1,7 +1,12 @@
 use takehome::{builder::Builder, builder_deprecated::BuilderSingleThread, field::GaloisField};
-use std::time::Instant;
+use std::{sync::{Arc, RwLock}, time::Instant};
 
 pub type Fp = GaloisField::<65537>;
+
+fn lambda_div8(val: Vec<Fp>) -> Fp {
+    assert_eq!(val.len(), 1);
+    val[0] / Fp::from(8)
+}
 
 #[test]
 fn test_basic_function() {
@@ -57,10 +62,10 @@ async fn test_constraints() {
 
     let b = builder.add(&a, &one); 
 
-    let c = builder.init();
+    let c = builder.hint(&[&b], lambda_div8);
     let c_times_8 = builder.mul(&c, &eight);
 
-    builder.fill_nodes(vec![Fp::from(13), Fp::from(2)]);
+    builder.fill_nodes(vec![Fp::from(13)]);
     builder.assert_equal(&c_times_8, &b);
 
     let constraint_check = builder.check_constraints().await; 
@@ -68,6 +73,19 @@ async fn test_constraints() {
     println!("{:?}", constraint_check); 
     println!("{:?}", c_times_8);
     println!("{:?}", b);
+}
+
+#[tokio::test]
+async fn test_hints() {
+    let mut builder = Builder::<Fp>::new();
+    let a = builder.init();
+    let one = builder.constant(Fp::from(1)); 
+    let eight = builder.constant(Fp::from(8));
+
+    let b = builder.add(&a, &one); 
+
+    let c = builder.init();
+    let c_times_8 = builder.mul(&c, &eight);
 }
 
 #[tokio::test]

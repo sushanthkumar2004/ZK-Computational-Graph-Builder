@@ -30,7 +30,7 @@ Refer to ```tests/builder_tests.rs``` to see how to add equality assertions and 
 Here are the different types, how to use them, and what purpose they serve. 
 
 ### Galois Field Types
-To declare a Galois Field of order $p$, you can set ```pub type Fp = GaloisField::<p>;```. The code supports operator overloading for addition and multiplication. Division and subtraction were not implemented since the computational graph only has addition and multiplication gates. 
+To declare a Galois Field of order $p$, you can set ```pub type Fp = GaloisField::<p>;```. The code supports operator overloading for the four basic operations.
 ```rust
 // declare a galois field of order 65537 (only supports fields of prime order)
 pub type Fp = GaloisField::<65537>;

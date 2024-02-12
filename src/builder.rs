@@ -7,6 +7,7 @@ use crate::field::Field;
 pub struct LevelGates<F: Field> {
     adder_gates: Vec<AddGate<F>>,
     multiplier_gates: Vec<MultiplyGate<F>>,
+    lambda_gates: Vec<LambdaGate<F>>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +52,19 @@ pub struct MultiplyGate<F: Field> {
     right_input: Arc<RwLock<Node<F>>>,
     output: Arc<RwLock<Node<F>>>,
     depth: u64,
+}
+
+pub type Lambda<F> = fn(Vec<F>) -> F;
+
+/**
+ * LambdaGate structure to define arbitary hints based on other node values
+ * The function @lambda is used to determine the output.
+*/
+#[derive(Debug)]
+pub struct LambdaGate<F: Field> {
+    inputs: Vec<Arc<RwLock<Node<F>>>>,
+    output: Arc<RwLock<Node<F>>>,
+    lambda: Lambda<F>
 }
 
 impl<F: Field> Builder<F> {
@@ -138,6 +152,7 @@ impl<F: Field> Builder<F> {
             self.gates_per_level.push(LevelGates {
                 adder_gates: Vec::new(),
                 multiplier_gates: Vec::new(),
+                lambda_gates: Vec::new(),
             });
             self.gates_per_level[depth_gate as usize].adder_gates.push(add_gate);
         }
@@ -153,7 +168,6 @@ impl<F: Field> Builder<F> {
         let b_depth = b.read().unwrap().depth;
 
         let depth_gate = max(a_depth, b_depth);
-        
         let output_node = Arc::new(RwLock::new(Node {
             value: None,
             depth: depth_gate + 1,
@@ -174,6 +188,7 @@ impl<F: Field> Builder<F> {
             self.gates_per_level.push(LevelGates {
                 adder_gates: Vec::new(),
                 multiplier_gates: Vec::new(),
+                lambda_gates: Vec::new(),
             });
             self.gates_per_level[depth_gate as usize].multiplier_gates.push(multiply_gate);
         }
@@ -182,6 +197,36 @@ impl<F: Field> Builder<F> {
 
     fn batch_multiply(&mut self, left_arguments: &[Arc<RwLock<Node<F>>>], right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
         todo!()
+    }
+
+    pub fn hint(&mut self, arguments: &[&Arc<RwLock<Node<F>>>], lambda: Lambda<F>) -> Arc<RwLock<Node<F>>> {
+        let depth_gate = arguments.iter().map(|arg| arg.read().unwrap().depth).max().unwrap();
+        let output_node = Arc::new(RwLock::new(Node {
+            value: None,
+            depth: depth_gate + 1,
+            id: self.internal_count,
+        }));
+        self.internal_count += 1; 
+
+        let cloned_arguments: Vec<_> = arguments.iter().cloned().cloned().collect();
+
+        let lambda_gate = LambdaGate {
+            inputs: cloned_arguments,
+            output: output_node.clone(),
+            lambda,
+        };
+
+        if self.gates_per_level.len() > depth_gate as usize {
+            self.gates_per_level[depth_gate as usize].lambda_gates.push(lambda_gate);
+        } else {
+            self.gates_per_level.push(LevelGates {
+                adder_gates: Vec::new(),
+                multiplier_gates: Vec::new(),
+                lambda_gates: Vec::new(),
+            });
+            self.gates_per_level[depth_gate as usize].lambda_gates.push(lambda_gate);
+        }
+        output_node
     }
     
     pub fn assert_equal(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> EqualityAssertion<F> {
@@ -217,6 +262,7 @@ impl<F: Field> Builder<F> {
         for level_gate in &self.gates_per_level {
             let add_gates = &level_gate.adder_gates;
             let multiply_gates = &level_gate.multiplier_gates; 
+            let lambda_gates = &level_gate.lambda_gates; 
 
             add_gates.par_iter().for_each(|gate| {
                 let mut output = gate.output.write().unwrap();
@@ -231,6 +277,12 @@ impl<F: Field> Builder<F> {
                 let right_value = gate.right_input.read().unwrap().value.unwrap();
                 output.set_value(Some(left_value * right_value));
             });
+
+            lambda_gates.par_iter().for_each(|gate| {
+                let mut output = gate.output.write().unwrap();
+                let arguments: Vec<F> = gate.inputs.iter().map(|val| val.read().unwrap().value.unwrap()).collect(); 
+                output.set_value(Some((gate.lambda)(arguments)));
+            })
         }
     }
 
