@@ -159,7 +159,7 @@ impl<F: Field> Builder<F> {
         output_node
     }
 
-    fn batch_add(&mut self, left_arguments: &[Arc<RwLock<Node<F>>>], right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
+    fn batch_add(&mut self, _left_arguments: &[Arc<RwLock<Node<F>>>], _right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
         todo!()
     }
     
@@ -195,7 +195,7 @@ impl<F: Field> Builder<F> {
         output_node
     }
 
-    fn batch_multiply(&mut self, left_arguments: &[Arc<RwLock<Node<F>>>], right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
+    fn batch_multiply(&mut self, _left_arguments: &[Arc<RwLock<Node<F>>>], _right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
         todo!()
     }
 

@@ -154,11 +154,11 @@ fn test_large_input_deprecated() {
     let start_time = Instant::now();
 
     let mut builder = BuilderSingleThread::new();
-    for i in 0..num_inputs {
+    for _i in 0..num_inputs {
         inputs.push(builder.init());
     }
 
-    for i in 0..num_inputs {
+    for _i in 0..num_inputs {
         constants.push(builder.constant(2));
     }
 
