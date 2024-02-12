@@ -44,9 +44,10 @@ fn main() {
 ```
 
 ### Node Types
+#### Tracking Depth
 
 ### Gate Types
-These are the two types of gates supported by the builder.
+These are the three types of gates supported by the builder.
 ```rust
 #[derive(Debug)]
 pub struct AddGate<F: Field> {
@@ -63,8 +64,18 @@ pub struct MultiplyGate<F: Field> {
     output: Arc<RwLock<Node<F>>>,
     depth: u64,
 }
+
+pub type Lambda<F> = fn(Vec<F>) -> F;
+
+#[derive(Debug)]
+pub struct LambdaGate<F: Field> {
+    inputs: Vec<Arc<RwLock<Node<F>>>>,
+    output: Arc<RwLock<Node<F>>>,
+    lambda: Lambda<F>
+}
+
 ```
-The fields ```left_input``` and ```right_input``` represent the inputs to the adder gate and the multiplier gate, while ```output``` is either the sum of the values or the product. The argument ```depth``` is currently unused, but should be used to offer better debugging support. 
+The fields ```left_input``` and ```right_input``` represent the inputs to the adder gate and the multiplier gate, while ```output``` is either the sum of the values or the product. The argument ```depth``` is currently unused, but should be used to offer better debugging support. ```LambdaGate``` is a special type of gate, and is used to provide hints. The user can make ```Lambda<F>``` an arbitrarily complex function, but once all the inputs to the function are known the output is filled in. Usually ```LambdaGate``` should be paired with some sort of constraint since the output cannot be constrained (since the function may not map to addition and multiplication gates). 
 
 ### Design Specification
 The order of execution is straightforward. To fill in the nodes, once the inputs are driven, simply go from lowest to highest depth and evaluate each gate. We can include concurrency by noting that when we evaluate all the gates at a certain level the computation can be run in parallel since the nodes we write to are different and there are no data dependecies. 

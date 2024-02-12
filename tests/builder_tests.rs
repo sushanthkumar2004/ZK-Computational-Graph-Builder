@@ -1,5 +1,5 @@
 use takehome::{builder::Builder, builder_deprecated::BuilderSingleThread, field::GaloisField};
-use std::{sync::{Arc, RwLock}, time::Instant};
+use std::time::Instant;
 
 pub type Fp = GaloisField::<65537>;
 
@@ -62,10 +62,10 @@ async fn test_constraints() {
 
     let b = builder.add(&a, &one); 
 
-    let c = builder.hint(&[&b], lambda_div8);
+    let c = builder.init();
     let c_times_8 = builder.mul(&c, &eight);
 
-    builder.fill_nodes(vec![Fp::from(13)]);
+    builder.fill_nodes(vec![Fp::from(13), Fp::from(2)]);
     builder.assert_equal(&c_times_8, &b);
 
     let constraint_check = builder.check_constraints().await; 
@@ -84,9 +84,19 @@ async fn test_hints() {
 
     let b = builder.add(&a, &one); 
 
-    let c = builder.init();
+    let c = builder.hint(&[&b], lambda_div8);
     let c_times_8 = builder.mul(&c, &eight);
+
+    builder.fill_nodes(vec![Fp::from(13)]);
+    builder.assert_equal(&c_times_8, &b);
+
+    let constraint_check = builder.check_constraints().await; 
+
+    println!("{:?}", constraint_check); 
+    println!("{:?}", c_times_8);
+    println!("{:?}", b);
 }
+
 
 #[tokio::test]
 async fn test_large_input() {
