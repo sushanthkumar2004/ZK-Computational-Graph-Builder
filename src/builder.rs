@@ -1,5 +1,4 @@
 use std::{cmp::max, sync::{Arc, RwLock}};
-use futures::future;
 use rayon::prelude::*;
 
 use crate::field::Field;
@@ -207,11 +206,6 @@ impl<F: Field> Builder<F> {
     }
     
     pub fn fill_nodes(&mut self, node_values: Vec<F>) {
-        assert_eq!(node_values.len(), self.input_nodes.len());
-        if node_values.len() != self.input_nodes.len() {
-            panic!("Not enough inputs provided: expected {}, got {}", self.input_nodes.len(), node_values.len());
-        }
-
         self.input_nodes.par_iter()
             .zip(node_values.into_par_iter())
             .for_each(|(node, value)| {
