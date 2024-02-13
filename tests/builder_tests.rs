@@ -3,11 +3,13 @@ use std::time::Instant;
 
 pub type Fp = GaloisField::<65537>;
 
+// equivalent to the lambda x -> x/8 but written as a "vector-function". 
 fn lambda_div8(val: Vec<Fp>) -> Fp {
     assert_eq!(val.len(), 1);
     val[0] / Fp::from(8)
 }
 
+// test that f(x) = x^2 + x + 5 is constructed and evaluated correctly 
 #[test]
 fn test_basic_function() {
     let mut builder = Builder::<Fp>::new();

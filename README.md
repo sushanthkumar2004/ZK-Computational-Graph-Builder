@@ -26,6 +26,10 @@ fn main() {
 ```
 Refer to ```tests/builder_tests.rs``` to see how to add equality assertions and verify them in circuit. 
 
+## Using add and multiply gates
+
+## Asserting hints and equality constraints 
+
 ## Explanation of the Types
 Here are the different types, how to use them, and what purpose they serve. 
 
@@ -44,7 +48,6 @@ fn main() {
 ```
 
 ### Node Types
-#### Tracking Depth
 
 ### Gate Types
 These are the three types of gates supported by the builder.
@@ -78,4 +81,22 @@ pub struct LambdaGate<F: Field> {
 The fields ```left_input``` and ```right_input``` represent the inputs to the adder gate and the multiplier gate, while ```output``` is either the sum of the values or the product. The argument ```depth``` is currently unused, but should be used to offer better debugging support. ```LambdaGate``` is a special type of gate, and is used to provide hints. The user can make ```Lambda<F>``` an arbitrarily complex function, but once all the inputs to the function are known the output is filled in. Usually ```LambdaGate``` should be paired with some sort of constraint since the output cannot be constrained (since the function may not map to addition and multiplication gates). 
 
 ### Design Specification
-The order of execution is straightforward. To fill in the nodes, once the inputs are driven, simply go from lowest to highest depth and evaluate each gate. We can include concurrency by noting that when we evaluate all the gates at a certain level the computation can be run in parallel since the nodes we write to are different and there are no data dependecies. 
+The order of execution is done in such a way to support parallelism. We declare all ```input``` and ```constant``` nodes to have depth $0$. Note that all other non-input and non-constant nodes must be the output of some gate. Suppose $r_1, r_2$ are inputs to gate $G$ with output $s$. Then, we declare
+$$\text{depth}(s)  = 1 + \text{max}(\text{depth}(r1), \text{depth}(r2)).$$
+Note that the only data dependencies occur when we increase depth. Thus, by staying in our "depth-level" we can use threads to evaluate all nodes on this level. A diagram is shown below for clarity. 
+
+<img src=./img/spec.jpg alt="Schematic" width="600">
+
+Note that without threads the best time complexity we can achieve is $O(\text{\# input nodes } + \text{\# gates })$. The overhead due to threading is not much as can be seen with the following benchmarks:
+
+#### Additional Considerations
+I expect that add gates will be faster than multiplier gates and those will be faster than lambda gates. Thus, instead of splitting all the gates equally across the threads we should split all the different types of gates equally across the threads (that way a thread doesnt end up with all the lambda gates and slow down computation of the rest of the gates at that depth level). The struct LevelGates keeps track of this. 
+```rust
+#[derive(Debug)]
+pub struct LevelGates<F: Field> {
+    adder_gates: Vec<AddGate<F>>,
+    multiplier_gates: Vec<MultiplyGate<F>>,
+    lambda_gates: Vec<LambdaGate<F>>,
+}
+```
+
