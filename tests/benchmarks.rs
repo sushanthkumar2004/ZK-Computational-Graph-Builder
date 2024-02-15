@@ -31,10 +31,9 @@ async fn test_large_input_graphbuilder() {
         intermediates.push(builder.add(&inputs[2*i], &inputs[2*i + 1])); 
     }
 
-    for i in num_inputs/4..num_inputs/2 {
-        intermediates.push(builder.mul(&inputs[2*i], &inputs[2*i + 1])); 
+    for i in 0..num_inputs/4 {
+        intermediates.push(builder.mul(&inputs[0], &inputs[i])); 
     }
-
 
     for i in 0..num_inputs/8 {
         builder.add(&intermediates[2*i], &intermediates[2*i + 1]); 
@@ -89,8 +88,8 @@ async fn test_large_input_builder() {
         intermediates.push(builder.add(&inputs[(2*i) as usize], &inputs[(2*i + 1) as usize])); 
     }
 
-    for i in num_inputs/4..num_inputs/2 {
-        intermediates.push(builder.mul(&inputs[(2*i) as usize], &inputs[(2*i + 1) as usize])); 
+    for i in 0..num_inputs/4 {
+        intermediates.push(builder.mul(&inputs[0], &inputs[i as usize])); 
     }
 
 
@@ -154,10 +153,10 @@ fn test_large_input_buildersinglethread() {
     for i in 0..num_inputs/4 {
         intermediates.push(builder.add(&inputs[(2*i) as usize], &inputs[(2*i + 1) as usize])); 
     }
-    for i in num_inputs/4..num_inputs/2 {
-        intermediates.push(builder.mul(&inputs[(2*i) as usize], &inputs[(2*i + 1) as usize])); 
+    
+    for i in 0..num_inputs/4 {
+        intermediates.push(builder.mul(&inputs[0], &inputs[i as usize])); 
     }
-
 
     for i in 0..num_inputs/8 {
         builder.add(&intermediates[(2*i) as usize], &intermediates[(2*i + 1) as usize]); 
