@@ -49,6 +49,39 @@ fn test_basic_function() {
 ## Using add and multiply gates
 
 ## Asserting hints and equality constraints 
+To specify a hint you need to specify a vector-function (i.e. a function that accepts a vector of arguments of type ```F``` and outputs something of type ```F```) to be used for the hint. The API for this is the same between both builders. 
+```rust
+fn lambda_div8(val: Vec<Fp>) -> Fp {
+    assert_eq!(val.len(), 1);
+    val[0] / Fp::from(8)
+}
+
+#[tokio::test]
+async fn test_hints() {
+    let mut builder = GraphBuilder::<Fp>::new();
+    let a = builder.init();
+    let one = builder.constant(Fp::from(1)); 
+    let eight = builder.constant(Fp::from(8));
+
+    let b = builder.add(&a, &one); 
+
+    let c = builder.hint(&[&b], lambda_div8);
+    let c_times_8 = builder.mul(&c, &eight);
+
+    builder.set(&a, Fp::from(13));
+
+    builder.fill_nodes();
+    builder.assert_equal(&c_times_8, &b);
+
+    let constraint_check = builder.check_constraints().await; 
+
+    println!("{:?}", constraint_check); 
+    println!("{:?}", c_times_8);
+    println!("{:?}", b);
+}
+
+```
+Refer to the tests for more examples. 
 
 ## Explanation of the Types
 Here are the different types, how to use them, and what purpose they serve. 
@@ -68,37 +101,56 @@ fn main() {
 ```
 
 ### Node Types
-
+Node types are specified as shown below:
+```rust
+#[derive(Clone, Default, Debug)]
+pub struct Node<F: Field> {
+    pub value: Option<F>,
+    pub depth: u64,
+    pub id: usize,
+}
+```
+The field ```value``` stores an option. Initially when nodes are initialized in the graph they all store ```None```. When ```fill_nodes()``` is called the null values are populated with the correct values. 
 ### Gate Types
 These are the three types of gates supported by the builder.
 ```rust
+// AddGate structure, which has two input nodes and one output node. 
+// LEFT_ID is the position of the left node in builder.nodes,
+// and RIGHT_ID is the position of the right node. 
+// DEPTH is defined as in the README. 
 #[derive(Debug)]
-pub struct AddGate<F: Field> {
-    left_input: Arc<RwLock<Node<F>>>,
-    right_input: Arc<RwLock<Node<F>>>,
-    output: Arc<RwLock<Node<F>>>,
+pub struct AddGate {
+    left_id: usize,
+    right_id: usize,
+    output_id: usize,
     depth: u64,
 }
 
 #[derive(Debug)]
-pub struct MultiplyGate<F: Field> {
-    left_input: Arc<RwLock<Node<F>>>,
-    right_input: Arc<RwLock<Node<F>>>,
-    output: Arc<RwLock<Node<F>>>,
+pub struct MultiplyGate {
+    left_id: usize,
+    right_id: usize,
+    output_id: usize,
     depth: u64,
 }
 
 pub type Lambda<F> = fn(Vec<F>) -> F;
 
+// LambdaGate structure to define arbitary hints based on other node values
+// The function LAMBDA is used to determine the output.
+// INPUT_IDS takes all the id's of the inputs
+// OUTPUT_ID stores the id of the output
+// DEPTH is defined as in README.
 #[derive(Debug)]
 pub struct LambdaGate<F: Field> {
-    inputs: Vec<Arc<RwLock<Node<F>>>>,
-    output: Arc<RwLock<Node<F>>>,
-    lambda: Lambda<F>
+    input_ids: Vec<usize>,
+    output_id: usize,
+    lambda: Lambda<F>,
+    depth: u64,
 }
 
 ```
-The fields ```left_input``` and ```right_input``` represent the inputs to the adder gate and the multiplier gate, while ```output``` is either the sum of the values or the product. The argument ```depth``` is currently unused, but should be used to offer better debugging support. ```LambdaGate``` is a special type of gate, and is used to provide hints. The user can make ```Lambda<F>``` an arbitrarily complex function, but once all the inputs to the function are known the output is filled in. Usually ```LambdaGate``` should be paired with some sort of constraint since the output cannot be constrained (since the function may not map to addition and multiplication gates). 
+The fields ```left_input``` and ```right_input``` represent the inputs to the adder gate and the multiplier gate, while ```output``` is either the sum of the values or the product. The argument ```depth``` is currently unused, but should be used to offer better debugging support. ```LambdaGate``` is a special type of gate, and is used to provide hints. The user can make ```Lambda<F>``` an arbitrarily complex function, but once all the inputs to the function are known the output is filled in. Usually ```LambdaGate``` should be paired with some sort of constraint since the output cannot be constrained (as the function may not map to addition and multiplication gates). 
 
 ### Design Specification
 The order of execution is done in such a way to support parallelism. We declare all ```input``` and ```constant``` nodes to have depth $0$. Note that all other non-input and non-constant nodes must be the output of some gate. Suppose $r_1, r_2$ are inputs to gate $G$ with output $s$. Then, we declare
