@@ -2,12 +2,6 @@ use takehome::{builder::Builder, field::GaloisField};
 
 pub type Fp = GaloisField::<65537>;
 
-// equivalent to the lambda x -> x/8 but written as a "vector-function". 
-fn lambda_div8(val: Vec<Fp>) -> Fp {
-    assert_eq!(val.len(), 1);
-    val[0] / Fp::from(8)
-}
-
 // test that f(x) = x^2 + x + 5 is constructed and evaluated correctly 
 #[test]
 fn test_basic_function() {
@@ -78,7 +72,13 @@ async fn test_constraints() {
     println!("{:?}", b);
 }
 
-// 
+// equivalent to the lambda x -> x/8 but written as a "vector-function". 
+fn lambda_div8(val: Vec<Fp>) -> Fp {
+    assert_eq!(val.len(), 1);
+    val[0] / Fp::from(8)
+}
+
+// test that the example on the website works 
 #[tokio::test]
 async fn test_hints() {
     let mut builder = Builder::<Fp>::new();
@@ -99,4 +99,31 @@ async fn test_hints() {
     println!("{:?}", constraint_check); 
     println!("{:?}", c_times_8);
     println!("{:?}", b);
+}
+
+// the function (a,b) -> a/b
+fn lambda_div(params: Vec<Fp>) -> Fp {
+    params[0] / params[1]
+}
+
+#[tokio::test]
+async fn test_lambda_gates() {
+    let mut builder = Builder::<Fp>::new();
+
+    let a = builder.init();
+    let b = builder.init();
+
+    let c = builder.mul(&a, &b);
+
+    let d = builder.hint(&[&c, &b], lambda_div);
+
+    builder.assert_equal(&d, &a);
+    builder.fill_nodes(vec![Fp::from(234), Fp::from(123)]);
+    let passed_constraints = builder.check_constraints().await; 
+
+    assert!(passed_constraints);
+    assert_eq!(a.read().unwrap().value.unwrap().value, 234);
+    assert_eq!(b.read().unwrap().value.unwrap().value, 123);
+    assert_eq!(c.read().unwrap().value.unwrap().value, 28782);
+    assert_eq!(d.read().unwrap().value.unwrap().value, 234);
 }

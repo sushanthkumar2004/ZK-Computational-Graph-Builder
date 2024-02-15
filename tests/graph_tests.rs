@@ -109,6 +109,36 @@ async fn test_hints() {
     println!("{:?}", b);
 }
 
+#[tokio::test]
+async fn test_lambda_gates() {
+    let mut builder = GraphBuilder::<Fp>::new();
+
+    let a = builder.init();
+    let b = builder.init();
+
+    let c = builder.mul(&a, &b);
+
+    fn lambda_div(params: Vec<Fp>) -> Fp {
+        params[0] / params[1]
+    }
+
+    let d = builder.hint(&[&c, &b], lambda_div);
+
+    builder.assert_equal(&d, &a);
+
+    builder.set(&a, Fp::from(234)); 
+    builder.set(&b, Fp::from(123));
+
+    builder.fill_nodes();
+    let passed_constraints = builder.check_constraints().await; 
+
+    assert!(passed_constraints);
+    assert_eq!(a.read().unwrap().value.unwrap().value, 234);
+    assert_eq!(b.read().unwrap().value.unwrap().value, 123);
+    assert_eq!(c.read().unwrap().value.unwrap().value, 28782);
+    assert_eq!(d.read().unwrap().value.unwrap().value, 234);
+}
+
 
 
 

@@ -46,7 +46,14 @@ fn test_basic_function() {
 }
 ```
 
-## Using add and multiply gates
+## Types of Builders.
+There are essentially three types of builders and they represent the three different stages I went through when designing. 
+
+* BuilderSingleThread: this was the first builder I wrote, so it was single threaded and does not use field elements.
+* Builder: An improvement to the BuilderSingleThread that adds support for multithreading and async constraint checking.
+* GraphBuilder: Maybe a performance improvement over Builder? This uses a vector to keep track of all nodes in the graph and has slightly more helpful debug messages. For the most part this is pretty similar to Builder, except the gates store a vector position rather than a node itself. 
+
+To see how to use BuilderSingleThread, refer to ```benchmarks.rs```. For the others look at their respective tests file. 
 
 ## Asserting hints and equality constraints 
 To specify a hint you need to specify a vector-function (i.e. a function that accepts a vector of arguments of type ```F``` and outputs something of type ```F```) to be used for the hint. The API for this is the same between both builders. 
