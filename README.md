@@ -24,7 +24,27 @@ fn main() {
     builder.fill_nodes(vec![Fp::from(5)]);
 }
 ```
-Refer to ```tests/builder_tests.rs``` to see how to add equality assertions and verify them in circuit. 
+Refer to ```tests/builder_tests.rs``` to see how to add equality assertions and verify them in circuit. I also designed a slightly different API with a modified underlying implementation. Example usage is shown below:
+```rust
+pub type Fp = GaloisField::<65537>;
+
+fn test_basic_function() {
+    let mut builder = GraphBuilder::<Fp>::new();
+
+    let x = builder.init();
+    let x_squared = builder.mul(&x, &x);
+    
+    let five = builder.constant(Fp::from(5));
+    let x_squared_plus_5 = builder.add(&x_squared, &five);
+    let y = builder.add(&x_squared_plus_5, &x);
+
+    // the way to set values is a bit different
+    builder.set(&x, Fp::from(5));
+
+    // now fill_nodes() accepts no arguments
+    builder.fill_nodes();
+}
+```
 
 ## Using add and multiply gates
 

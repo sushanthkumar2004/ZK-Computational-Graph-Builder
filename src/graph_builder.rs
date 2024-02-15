@@ -16,6 +16,8 @@ pub struct LevelGates<F: Field> {
 }
 
 // Struct to keep track of an equality assertion between two nodes
+// LEFT_ID stores the index of the left_node and RIGHT_ID stores 
+// the index of the right_node. Asserts right_node == left_node
 #[derive(Debug, Clone)]
 pub struct EqualityAssertion {
     left_id: usize,
@@ -23,21 +25,23 @@ pub struct EqualityAssertion {
 }
 
 // builder struct
-// input_nodes keeps track of the nodes at the input layer,
-// constant_nodes keeps track of all the constants
-// gates_per_level stores all the gates at a certain level in a LevelGates structure.
-// internal_count is basically used to assign an identifier to each node.  
+// NODES is a vector that keeps track of all the nodes in the graph,
+// GATES is a set of gates aggregated by depth and seperated by type
+// Note: Gates[i] will return a LevelGates structure that stores all the gates
+// in depth level i by their type. 
+// ASSERTIONS stores all the equality assertions that the user makes
+// NEXT_ID is basically used to assign an identifier to each node. 
+// As a node is added to the graph, NEXT_ID is incremented by 1
 #[derive(Debug, Default)]
 pub struct GraphBuilder<F: Field> {
     nodes: Vec<WrappedNode<F>>, 
     gates: Vec<LevelGates<F>>,
     assertions: Vec<EqualityAssertion>,
     next_id: usize,
-    num_inputs: u64,
 }
 
 // node struct to store the value and depth of the node
-// id is just used for debugging purposes. 
+// ID is just used for debugging purposes. 
 #[derive(Clone, Default, Debug)]
 pub struct Node<F: Field> {
     pub value: Option<F>,
@@ -53,6 +57,9 @@ impl<F: Field> Node<F> {
 }
 
 // AddGate structure, which has two input nodes and one output node. 
+// LEFT_ID is the position of the left node in builder.nodes,
+// and RIGHT_ID is the position of the right node. 
+// DEPTH is defined as in the README. 
 #[derive(Debug)]
 pub struct AddGate {
     left_id: usize,
@@ -71,10 +78,11 @@ pub struct MultiplyGate {
 
 pub type Lambda<F> = fn(Vec<F>) -> F;
 
-/**
- * LambdaGate structure to define arbitary hints based on other node values
- * The function @lambda is used to determine the output.
-*/
+// LambdaGate structure to define arbitary hints based on other node values
+// The function LAMBDA is used to determine the output.
+// INPUT_IDS takes all the id's of the inputs
+// OUTPUT_ID stores the id of the output
+// DEPTH is defined as in README.
 #[derive(Debug)]
 pub struct LambdaGate<F: Field> {
     input_ids: Vec<usize>,
@@ -83,6 +91,7 @@ pub struct LambdaGate<F: Field> {
     depth: u64,
 }
 
+// Note that all operations are done in F
 impl<F: Field> GraphBuilder<F> {
     pub fn new() -> Self {
         Self {
@@ -90,10 +99,10 @@ impl<F: Field> GraphBuilder<F> {
             gates: Vec::new(),
             assertions: Vec::new(),
             next_id: 0,
-            num_inputs: 0,
         }
     }
     
+    // method to initialize a new node. 
     pub fn init(&mut self) -> WrappedNode<F> {
         let node = Arc::new(RwLock::new(Node {
             value: None,
@@ -101,12 +110,12 @@ impl<F: Field> GraphBuilder<F> {
             id: self.next_id,
         }));
         self.next_id += 1; 
-        self.num_inputs += 1;
         self.nodes.push(node.clone());
         node
 
     }
 
+    // allows one to batch initialize a vector of inputs of size num_inputs using multithreading
     pub fn batch_init(&mut self, num_inputs: usize) -> Vec<WrappedNode<F>> {
         let init_count = self.next_id; 
         let vector_input: Vec<WrappedNode<F>> = (0..num_inputs).into_par_iter().map(|i| {
@@ -120,16 +129,23 @@ impl<F: Field> GraphBuilder<F> {
         vector_input
     }
 
+    // slightly different API. Allows the user to set any node in the graph. 
+    // NOTE: builder.set() allows the user to set ANY node in the graph including those
+    // that are driven by outputs in gates. Calling builder.fill_nodes() will
+    // safely override the nodes that it needs, but the asynchronous function builder.check_constraints()
+    // may fail if the value is overriden by the user. 
     pub fn set(&mut self, node: &WrappedNode<F>, value: F) {
         node.write().unwrap().set_value(Some(value));
     }
 
+    // Allows you to set a vector of inputs 
     pub fn batch_set(&mut self, nodes: &[WrappedNode<F>], values: &[F]) {
         nodes.par_iter().enumerate().for_each(|(i, node)| {
             node.write().unwrap().set_value(Some(values[i]));
         });        
     }
     
+    // declare a constant node in the graph 
     pub fn constant(&mut self, value: F) -> WrappedNode<F> {
         let node = Arc::new(RwLock::new(Node {
             value: Some(value),
@@ -141,6 +157,7 @@ impl<F: Field> GraphBuilder<F> {
         node
     }
 
+    // declare a batch of constants given a vector of values
     pub fn batch_constant(&mut self, values: &[F]) -> Vec<WrappedNode<F>> {
         let init_count = self.next_id; 
         let vector_constant: Vec<WrappedNode<F>> = (0..values.len()).into_par_iter().map(|i| {
@@ -154,6 +171,8 @@ impl<F: Field> GraphBuilder<F> {
         vector_constant
     }
     
+    // instantiate an add gate between two nodes and get an output node
+    // that represents the addition of the two supplied nodes
     pub fn add(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.read().unwrap().depth;
         let b_depth = b.read().unwrap().depth;
@@ -188,6 +207,8 @@ impl<F: Field> GraphBuilder<F> {
         output_node
     }
     
+    // instantiate a multiply gate between two nodes and get an output node
+    // that represents the addition of the two supplied nodes
     pub fn mul(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.read().unwrap().depth;
         let b_depth = b.read().unwrap().depth;
@@ -353,8 +374,6 @@ impl<F: Field> GraphBuilder<F> {
     /*
      * Async function to check that constraints between nodes are satisfied once nodes are filled in.
      * 
-     * ARGS: 
-     * none 
      * RETURNS:
      * a boolean representing whether or not all equality constraints passed
      */
