@@ -346,6 +346,7 @@ impl<F: Field> GraphBuilder<F> {
                 let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].read().unwrap().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth))).collect();
                 output.set_value(Some((gate.lambda)(arguments)));
             });
+
         }
     }
 

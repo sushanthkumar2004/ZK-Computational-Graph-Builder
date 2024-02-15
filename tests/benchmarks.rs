@@ -39,7 +39,7 @@ async fn test_large_input_graphbuilder() {
     }
    
     builder.batch_assert_equal(&inputs, &inputs);
-    builder.batch_set(&inputs, &vec![Fp::from(1); num_inputs]);
+    builder.batch_set(&inputs, &vec![Fp::from(100); num_inputs]);
 
     let time_to_fill_nodes = Instant::now();
     builder.fill_nodes();
@@ -90,7 +90,7 @@ async fn test_large_input_builder() {
     builder.batch_assert_equal(&inputs, &inputs);
 
     let time_to_fill_nodes = Instant::now();
-    builder.fill_nodes(vec![Fp::from(1); num_inputs as usize]);
+    builder.fill_nodes(vec![Fp::from(100); num_inputs as usize]);
     println!("Time to fill nodes: {:?}", Instant::now() - time_to_fill_nodes);
 
     let check_constraints = builder.check_constraints().await;
@@ -148,7 +148,7 @@ fn test_large_input_buildersinglethread() {
     }
 
     let time_to_fill_nodes = Instant::now();
-    builder.fill_nodes(vec![1; num_inputs as usize]);
+    builder.fill_nodes(vec![100; num_inputs as usize]);
     println!("Time to fill nodes: {:?}", Instant::now() - time_to_fill_nodes);
 
     let check_constraints = builder.check_constraints();

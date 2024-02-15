@@ -23,3 +23,7 @@ opt-level = 3  # Maximum optimizations
 
 [profile.release]
 opt-level = 3  # Maximum optimizations
+
+[env]
+RUST_TEST_THREADS = "8"
+RAYON_NUM_THREADS = "8"
