@@ -154,12 +154,12 @@ The fields ```left_input``` and ```right_input``` represent the inputs to the ad
 
 ### Design Specification
 The order of execution is done in such a way to support parallelism. We declare all ```input``` and ```constant``` nodes to have depth $0$. Note that all other non-input and non-constant nodes must be the output of some gate. Suppose $r_1, r_2$ are inputs to gate $G$ with output $s$. Then, we declare
-$$\text{depth}(s)  = 1 + \text{max}(\text{depth}(r1), \text{depth}(r2)).$$
+$$\text{depth}(s)  = 1 + \text{max}(\text{depth}(r_1), \text{depth}(r_2)).$$
 Note that the only data dependencies occur when we increase depth. Thus, by staying in our "depth-level" we can use threads to evaluate all nodes on this level. A diagram is shown below for clarity. 
 
 <img src=./img/spec.jpg alt="Schematic" width="600">
 
-Note that without threads the best time complexity we can achieve is $O(\text{\# input nodes } + \text{\# gates })$. The overhead due to threading is not much as can be seen with the following benchmarks:
+Note that without threads the best time complexity we can achieve is $O(\text{number input nodes } + \text{number of gates })$. 
 
 #### Additional Considerations
 I expect that add gates will be faster than multiplier gates and those will be faster than lambda gates. Thus, instead of splitting all the gates equally across the threads we should split all the different types of gates equally across the threads (that way a thread doesnt end up with all the lambda gates and slow down computation of the rest of the gates at that depth level). The struct LevelGates keeps track of this. 
@@ -171,4 +171,7 @@ pub struct LevelGates<F: Field> {
     lambda_gates: Vec<LambdaGate<F>>,
 }
 ```
+
+## Issues
+The major issue is that somehow ```BuilderSingleThread``` outperforms both ```GraphBuilder``` and ```Builder``` when filling out the graph on my computer. I tested this on my friends computer and somehow on his, ```GraphBuilder``` executes faster than ```BuilderSingleThread```. I'm not sure why this is, but I think it may have something to do with the level 3 optimizations I set in ```cargo.toml```. 
 
