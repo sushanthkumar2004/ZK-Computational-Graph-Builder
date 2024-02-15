@@ -1,5 +1,4 @@
-use takehome::{builder::Builder, field::GaloisField};
-
+use takehome::{field::GaloisField, graph_builder::*};
 pub type Fp = GaloisField::<65537>;
 
 // equivalent to the lambda x -> x/8 but written as a "vector-function". 
@@ -8,18 +7,20 @@ fn lambda_div8(val: Vec<Fp>) -> Fp {
     val[0] / Fp::from(8)
 }
 
-// test that f(x) = x^2 + x + 5 is constructed and evaluated correctly 
 #[test]
 fn test_basic_function() {
-    let mut builder = Builder::<Fp>::new();
+    let mut builder = GraphBuilder::<Fp>::new();
 
     let x = builder.init();
     let x_squared = builder.mul(&x, &x);
+    
     let five = builder.constant(Fp::from(5));
     let x_squared_plus_5 = builder.add(&x_squared, &five);
     let y = builder.add(&x_squared_plus_5, &x);
 
-    builder.fill_nodes(vec![Fp::from(5)]);
+    builder.set(&x, Fp::from(5));
+
+    builder.fill_nodes();
 
     assert_eq!(x.read().unwrap().value.unwrap().value, 5);
     assert_eq!(x_squared.read().unwrap().value.unwrap().value, 25);
@@ -28,10 +29,9 @@ fn test_basic_function() {
     assert_eq!(y.read().unwrap().value.unwrap().value, 35);
 }
 
-// test that multiple threads can read the same value at the same time. 
 #[test]
 fn test_multiple_access() {
-    let mut builder = Builder::<Fp>::new();
+    let mut builder = GraphBuilder::<Fp>::new();
 
     let x = builder.init();
     let y = builder.init();
@@ -43,7 +43,12 @@ fn test_multiple_access() {
     let xz = builder.mul(&x, &z);
     let xw = builder.mul(&x, &w);
 
-    builder.fill_nodes(vec![Fp::from(5), Fp::from(5), Fp::from(45), Fp::from(6)]);
+    builder.set(&x, Fp::from(5));
+    builder.set(&y, Fp::from(5));
+    builder.set(&z, Fp::from(45));
+    builder.set(&w, Fp::from(6));
+
+    builder.fill_nodes();
     assert_eq!(x.read().unwrap().value.unwrap().value, 5);
     assert_eq!(y.read().unwrap().value.unwrap().value, 5);
     assert_eq!(z.read().unwrap().value.unwrap().value, 45);
@@ -55,10 +60,9 @@ fn test_multiple_access() {
     assert_eq!(xw.read().unwrap().value.unwrap().value, 30);
 }
 
-// test the check_constraints() function
 #[tokio::test]
 async fn test_constraints() {
-    let mut builder = Builder::<Fp>::new();
+    let mut builder = GraphBuilder::<Fp>::new();
     let a = builder.init();
     let one = builder.constant(Fp::from(1)); 
     let eight = builder.constant(Fp::from(8));
@@ -68,7 +72,10 @@ async fn test_constraints() {
     let c = builder.init();
     let c_times_8 = builder.mul(&c, &eight);
 
-    builder.fill_nodes(vec![Fp::from(13), Fp::from(2)]);
+    builder.set(&a, Fp::from(13));
+    builder.set(&c, Fp::from(2));
+
+    builder.fill_nodes();
     builder.assert_equal(&c_times_8, &b);
 
     let constraint_check = builder.check_constraints().await; 
@@ -78,10 +85,9 @@ async fn test_constraints() {
     println!("{:?}", b);
 }
 
-// 
 #[tokio::test]
 async fn test_hints() {
-    let mut builder = Builder::<Fp>::new();
+    let mut builder = GraphBuilder::<Fp>::new();
     let a = builder.init();
     let one = builder.constant(Fp::from(1)); 
     let eight = builder.constant(Fp::from(8));
@@ -91,7 +97,9 @@ async fn test_hints() {
     let c = builder.hint(&[&b], lambda_div8);
     let c_times_8 = builder.mul(&c, &eight);
 
-    builder.fill_nodes(vec![Fp::from(13)]);
+    builder.set(&a, Fp::from(13));
+
+    builder.fill_nodes();
     builder.assert_equal(&c_times_8, &b);
 
     let constraint_check = builder.check_constraints().await; 
@@ -100,3 +108,7 @@ async fn test_hints() {
     println!("{:?}", c_times_8);
     println!("{:?}", b);
 }
+
+
+
+

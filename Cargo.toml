@@ -13,6 +13,13 @@ getset = "0.1.2"
 rayon = "1.8.1"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
+criterion = "0.3"
 
 [lib]
 path = "src/lib.rs"
+
+[profile.dev]
+opt-level = 3  # Maximum optimizations
+
+[profile.release]
+opt-level = 3  # Maximum optimizations

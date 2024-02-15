@@ -3,6 +3,11 @@ use rayon::prelude::*;
 
 use crate::field::Field;
 
+type WrappedNode<F> = Arc<RwLock<Node<F>>>;
+
+// Keeps track of all gates at the level
+// Note that the gates are seperated by type
+// since otherwise some threads could take much longer than others to finish. 
 #[derive(Debug)]
 pub struct LevelGates<F: Field> {
     adder_gates: Vec<AddGate<F>>,
@@ -10,21 +15,29 @@ pub struct LevelGates<F: Field> {
     lambda_gates: Vec<LambdaGate<F>>,
 }
 
+// Struct to keep track of an equality assertion between two nodes
 #[derive(Debug, Clone)]
 pub struct EqualityAssertion<F: Field> {
-    left_node: Arc<RwLock<Node<F>>>,
-    right_node: Arc<RwLock<Node<F>>>,
+    left_node: WrappedNode<F>,
+    right_node: WrappedNode<F>,
 }
 
+// builder struct
+// input_nodes keeps track of the nodes at the input layer,
+// constant_nodes keeps track of all the constants
+// gates_per_level stores all the gates at a certain level in a LevelGates structure.
+// internal_count is basically used to assign an identifier to each node.  
 #[derive(Debug, Default)]
 pub struct Builder<F: Field> {
-    input_nodes: Vec<Arc<RwLock<Node<F>>>>,
-    constant_nodes: Vec<Arc<RwLock<Node<F>>>>,
+    input_nodes: Vec<WrappedNode<F>>,
+    constant_nodes: Vec<WrappedNode<F>>,
     gates_per_level: Vec<LevelGates<F>>,
     assertions: Vec<EqualityAssertion<F>>,
     internal_count: u64,
 }
 
+// node struct to store the value and depth of the node
+// id is just used for debugging purposes. 
 #[derive(Clone, Default, Debug)]
 pub struct Node<F: Field> {
     pub value: Option<F>,
@@ -32,25 +45,27 @@ pub struct Node<F: Field> {
     pub id: u64,
 }
 
+// sets the value of the node
 impl<F: Field> Node<F> {
     fn set_value(&mut self, value: Option<F>) {
         self.value = value;
     }
 }
 
+// AddGate structure, which has two input nodes and one output node. 
 #[derive(Debug)]
 pub struct AddGate<F: Field> {
-    left_input: Arc<RwLock<Node<F>>>,
-    right_input: Arc<RwLock<Node<F>>>,
-    output: Arc<RwLock<Node<F>>>,
+    left_input: WrappedNode<F>,
+    right_input: WrappedNode<F>,
+    output: WrappedNode<F>,
     depth: u64,
 }
 
 #[derive(Debug)]
 pub struct MultiplyGate<F: Field> {
-    left_input: Arc<RwLock<Node<F>>>,
-    right_input: Arc<RwLock<Node<F>>>,
-    output: Arc<RwLock<Node<F>>>,
+    left_input: WrappedNode<F>,
+    right_input: WrappedNode<F>,
+    output: WrappedNode<F>,
     depth: u64,
 }
 
@@ -62,8 +77,8 @@ pub type Lambda<F> = fn(Vec<F>) -> F;
 */
 #[derive(Debug)]
 pub struct LambdaGate<F: Field> {
-    inputs: Vec<Arc<RwLock<Node<F>>>>,
-    output: Arc<RwLock<Node<F>>>,
+    inputs: Vec<WrappedNode<F>>,
+    output: WrappedNode<F>,
     lambda: Lambda<F>
 }
 
@@ -78,7 +93,7 @@ impl<F: Field> Builder<F> {
         }
     }
     
-    pub fn init(&mut self) -> Arc<RwLock<Node<F>>> {
+    pub fn init(&mut self) -> WrappedNode<F> {
         let node = Arc::new(RwLock::new(Node {
             value: None,
             depth: 0,
@@ -89,9 +104,9 @@ impl<F: Field> Builder<F> {
         node
     }
 
-    pub fn batch_init(&mut self, num_inputs: u64) -> Vec<Arc<RwLock<Node<F>>>> {
+    pub fn batch_init(&mut self, num_inputs: u64) -> Vec<WrappedNode<F>> {
         let init_count = self.internal_count; 
-        let vector_input: Vec<Arc<RwLock<Node<F>>>> = (0..num_inputs).into_par_iter().map(|i| {
+        let vector_input: Vec<WrappedNode<F>> = (0..num_inputs).into_par_iter().map(|i| {
             Arc::new(RwLock::new(Node {
                 value: None,
                 depth: 0,
@@ -102,7 +117,7 @@ impl<F: Field> Builder<F> {
         vector_input
     }
     
-    pub fn constant(&mut self, value: F) -> Arc<RwLock<Node<F>>> {
+    pub fn constant(&mut self, value: F) -> WrappedNode<F> {
         let node = Arc::new(RwLock::new(Node {
             value: Some(value),
             depth: 0,
@@ -113,9 +128,9 @@ impl<F: Field> Builder<F> {
         node
     }
 
-    pub fn batch_constant(&mut self, values: &[F]) -> Vec<Arc<RwLock<Node<F>>>> {
+    pub fn batch_constant(&mut self, values: &[F]) -> Vec<WrappedNode<F>> {
         let init_count = self.internal_count; 
-        let vector_constant: Vec<Arc<RwLock<Node<F>>>> = (0..values.len()).into_par_iter().map(|i| {
+        let vector_constant: Vec<WrappedNode<F>> = (0..values.len()).into_par_iter().map(|i| {
             Arc::new(RwLock::new(Node {
                 value: Some(values[i]),
                 depth: 0,
@@ -126,7 +141,7 @@ impl<F: Field> Builder<F> {
         vector_constant
     }
     
-    pub fn add(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> Arc<RwLock<Node<F>>> {
+    pub fn add(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.read().unwrap().depth;
         let b_depth = b.read().unwrap().depth;
 
@@ -159,11 +174,11 @@ impl<F: Field> Builder<F> {
         output_node
     }
 
-    fn batch_add(&mut self, _left_arguments: &[Arc<RwLock<Node<F>>>], _right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
+    fn batch_add(&mut self, _left_arguments: &[WrappedNode<F>], _right_arguments: &[WrappedNode<F>]) -> Vec<WrappedNode<F>> {
         todo!()
     }
     
-    pub fn mul(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> Arc<RwLock<Node<F>>> {
+    pub fn mul(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.read().unwrap().depth;
         let b_depth = b.read().unwrap().depth;
 
@@ -195,11 +210,11 @@ impl<F: Field> Builder<F> {
         output_node
     }
 
-    fn batch_multiply(&mut self, _left_arguments: &[Arc<RwLock<Node<F>>>], _right_arguments: &[Arc<RwLock<Node<F>>>]) -> Vec<Arc<RwLock<Node<F>>>> {
+    fn batch_multiply(&mut self, _left_arguments: &[WrappedNode<F>], _right_arguments: &[WrappedNode<F>]) -> Vec<WrappedNode<F>> {
         todo!()
     }
 
-    pub fn hint(&mut self, arguments: &[&Arc<RwLock<Node<F>>>], lambda: Lambda<F>) -> Arc<RwLock<Node<F>>> {
+    pub fn hint(&mut self, arguments: &[&WrappedNode<F>], lambda: Lambda<F>) -> WrappedNode<F> {
         let depth_gate = arguments.iter().map(|arg| arg.read().unwrap().depth).max().unwrap();
         let output_node = Arc::new(RwLock::new(Node {
             value: None,
@@ -229,7 +244,7 @@ impl<F: Field> Builder<F> {
         output_node
     }
     
-    pub fn assert_equal(&mut self, a: &Arc<RwLock<Node<F>>>, b: &Arc<RwLock<Node<F>>>) -> EqualityAssertion<F> {
+    pub fn assert_equal(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> EqualityAssertion<F> {
         let assertion = EqualityAssertion {
             left_node: a.clone(),
             right_node: b.clone(),
@@ -238,7 +253,7 @@ impl<F: Field> Builder<F> {
         assertion
     }
 
-    pub fn batch_assert_equal(&mut self, left_args: &[Arc<RwLock<Node<F>>>], right_args: &[Arc<RwLock<Node<F>>>]) -> Vec<EqualityAssertion<F>> {
+    pub fn batch_assert_equal(&mut self, left_args: &[WrappedNode<F>], right_args: &[WrappedNode<F>]) -> Vec<EqualityAssertion<F>> {
         assert_eq!(left_args.len(), right_args.len());
 
         let new_assertions: Vec<EqualityAssertion<F>> = (0..right_args.len()).into_par_iter().map(|i| {
@@ -249,8 +264,20 @@ impl<F: Field> Builder<F> {
         self.assertions.extend(new_assertions.clone());
         new_assertions
     }
-    
+
+
+    /*
+     * Multithreaded function to fill in all the nodes of the graph given inputs. Expects a list of
+     * field elements for the values. Assigns values to variables based on the order they were initialized. 
+     * 
+     * ARGS: Vec<F>
+     * Requires a vector of inputs 
+     * RETURNS:
+     * a boolean representing whether or not all equality constraints passed
+     */
     pub fn fill_nodes(&mut self, node_values: Vec<F>) {
+        assert_eq!(node_values.len(), self.input_nodes.len());
+
         self.input_nodes.par_iter()
             .zip(node_values.into_par_iter())
             .for_each(|(node, value)| {
@@ -282,21 +309,27 @@ impl<F: Field> Builder<F> {
                 let mut output = gate.output.write().unwrap();
                 let arguments: Vec<F> = gate.inputs.iter().map(|val| val.read().unwrap().value.unwrap()).collect(); 
                 output.set_value(Some((gate.lambda)(arguments)));
-            })
+            });
         }
     }
 
+    /*
+     * Async function to check that constraints between nodes are satisfied once nodes are filled in.
+     * 
+     * ARGS: 
+     * none 
+     * RETURNS:
+     * a boolean representing whether or not all equality constraints passed
+     */
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
             let future_left_value = async {
                 assertion.left_node.read().unwrap().value.unwrap()
-            };
-            let future_left_value = future_left_value.await;
+            }.await;
 
             let future_right_value = async {
                 assertion.right_node.read().unwrap().value.unwrap()
-            };
-            let future_right_value = future_right_value.await;
+            }.await;
             
             if future_left_value != future_right_value {
                 let left_value = assertion.left_node.read().unwrap();

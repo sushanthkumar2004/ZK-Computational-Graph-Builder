@@ -48,6 +48,12 @@ pub struct MultiplyGate {
     depth: u64,
 }
 
+impl Default for BuilderSingleThread {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BuilderSingleThread {
     pub fn new() -> Self {
         Self {
