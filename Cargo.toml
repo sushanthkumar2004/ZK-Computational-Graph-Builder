@@ -15,10 +15,10 @@ parking_lot = "0.11.1"
 path = "src/lib.rs"
 
 [profile.dev]
-opt-level = 3  # Maximum optimizations
+opt-level = 3  
 
 [profile.release]
-opt-level = 3  # Maximum optimizations
+opt-level = 3 
 
 [env]
 RUST_TEST_THREADS = "8"
