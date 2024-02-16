@@ -12,10 +12,10 @@ rayon = "1.8.1"
 path = "src/lib.rs"
 
 [profile.dev]
-opt-level = 3  
+opt-level = 3
 
 [profile.release]
-opt-level = 3 
+opt-level = 3
 
 [env]
 RUST_TEST_THREADS = "8"

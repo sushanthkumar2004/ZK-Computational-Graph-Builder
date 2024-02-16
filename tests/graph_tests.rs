@@ -22,11 +22,11 @@ fn test_basic_function() {
 
     builder.fill_nodes();
 
-    assert_eq!(x.read_value().value, 5);
-    assert_eq!(x_squared.read_value().value, 25);
-    assert_eq!(five.read_value().value, 5);
-    assert_eq!(x_squared_plus_5.read_value().value, 30);
-    assert_eq!(y.read_value().value, 35);
+    assert_eq!(x.read().value, 5);
+    assert_eq!(x_squared.read().value, 25);
+    assert_eq!(five.read().value, 5);
+    assert_eq!(x_squared_plus_5.read().value, 30);
+    assert_eq!(y.read().value, 35);
 }
 
 #[test]
@@ -49,15 +49,15 @@ fn test_multiple_access() {
     builder.set(&w, Fp::from(6));
 
     builder.fill_nodes();
-    assert_eq!(x.read_value().value, 5);
-    assert_eq!(y.read_value().value, 5);
-    assert_eq!(z.read_value().value, 45);
-    assert_eq!(w.read_value().value, 6);
+    assert_eq!(x.read().value, 5);
+    assert_eq!(y.read().value, 5);
+    assert_eq!(z.read().value, 45);
+    assert_eq!(w.read().value, 6);
 
-    assert_eq!(x2.read_value().value, 25);
-    assert_eq!(xy.read_value().value, 25);
-    assert_eq!(xz.read_value().value, 225);
-    assert_eq!(xw.read_value().value, 30);
+    assert_eq!(x2.read().value, 25);
+    assert_eq!(xy.read().value, 25);
+    assert_eq!(xz.read().value, 225);
+    assert_eq!(xw.read().value, 30);
 }
 
 #[tokio::test]
@@ -133,8 +133,8 @@ async fn test_lambda_gates() {
     let passed_constraints = builder.check_constraints().await; 
 
     assert!(passed_constraints);
-    assert_eq!(a.read_value().value, 234);
-    assert_eq!(b.read_value().value, 123);
-    assert_eq!(c.read_value().value, 28782);
-    assert_eq!(d.read_value().value, 234);
+    assert_eq!(a.read().value, 234);
+    assert_eq!(b.read().value, 123);
+    assert_eq!(c.read().value, 28782);
+    assert_eq!(d.read().value, 234);
 }

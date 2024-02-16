@@ -3,6 +3,8 @@ use rayon::prelude::*;
 
 use crate::field::Field;
 
+// all nodes passed between the graphs need to be wrapped in Arc
+// so that multiple threads can read the same node concurrently. 
 type WrappedNode<F> = Arc<Node<F>>;
 
 // Keeps track of all gates at the level
@@ -49,14 +51,18 @@ pub struct Node<F: Field> {
     pub id: usize,
 }
 
-// sets the value of the node
 impl<F: Field> Node<F> {
-    pub fn set_value(&mut self, value: Option<F>) {
+    // allows the user to essentially reset the value in the box
+    pub fn set(&self, value: Option<F>) {
         let value_ptr = Box::into_raw(Box::new(value));
         self.value.store(value_ptr, Ordering::Relaxed);
     }
 
-    pub fn read_value(&self) -> F {
+    // unsafe function that returns self.value as a field element.
+    // Note that Rust cannot gaurantee the .as_ref() operation is safe,
+    // but I can ensure that this will not lead to undefined behavior. 
+    // Also, there seems to be no other way to even access the value. 
+    pub fn read(&self) -> F {
         unsafe { self.value.load(Ordering::Relaxed).as_ref().unwrap_or_else(|| panic!("Raw dereference failed!")).unwrap_or_else(|| panic!("Value unfilled at id {}!", self.id)) }
     }
 }
@@ -140,13 +146,13 @@ impl<F: Field> GraphBuilder<F> {
     // safely override the nodes that it needs, but the asynchronous function builder.check_constraints()
     // may fail if the value is overriden by the user. 
     pub fn set(&mut self, node: &WrappedNode<F>, value: F) {
-        node.value.store(Box::into_raw(Box::new(Some(value))), Ordering::Relaxed);
+        node.set(Some(value));
     }
 
     // Allows you to set a vector of inputs 
     pub fn batch_set(&mut self, nodes: &[WrappedNode<F>], values: &[F]) {
         nodes.par_iter().enumerate().for_each(|(i, node)| {
-            node.value.store(Box::into_raw(Box::new(Some(values[i]))), Ordering::Relaxed);
+            node.set(Some(values[i]));
         });        
     }
     
@@ -259,15 +265,18 @@ impl<F: Field> GraphBuilder<F> {
      */
 
     pub fn hint(&mut self, arguments: &[&WrappedNode<F>], lambda: Lambda<F>) -> WrappedNode<F> {
+        // read in arguments which should be other nodes in the graph
         let depth_gate = arguments.iter().map(|arg| arg.depth).max().unwrap();
 
+        // create an output node to store the value in
         let output_node = Arc::new(Node {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: depth_gate + 1,
             id: self.next_id,
         });
         
-
+        // get the positions of the nodes in the vector self.nodes, 
+        // so that the values can be extracted later
         let argument_ids: Vec<_> = arguments.iter().map(|node| node.id).collect();
 
         let lambda_gate = LambdaGate {
@@ -353,23 +362,20 @@ impl<F: Field> GraphBuilder<F> {
             // parallel iterate over all the gates, read the inputs and drive the outputs accordingly. 
             // I used unwrap_or_else to handle values that were unfilled. 
             add_gates.par_iter().for_each(|gate| {
-                let left_value = self.nodes[gate.left_id].read_value();
-                let right_value = self.nodes[gate.right_id].read_value();
-                let sum_ptr = Box::into_raw(Box::new(Some(left_value + right_value)));
-                self.nodes[gate.output_id].value.store(sum_ptr, Ordering::Relaxed);
+                let left_value = self.nodes[gate.left_id].read();
+                let right_value = self.nodes[gate.right_id].read();
+                self.nodes[gate.output_id].set(Some(left_value + right_value));
             });
 
             multiply_gates.par_iter().for_each(|gate| {
-                let left_value = self.nodes[gate.left_id].read_value();
-                let right_value = self.nodes[gate.right_id].read_value();
-                let sum_ptr = Box::into_raw(Box::new(Some(left_value * right_value)));
-                self.nodes[gate.output_id].value.store(sum_ptr, Ordering::Relaxed);
+                let left_value = self.nodes[gate.left_id].read();
+                let right_value = self.nodes[gate.right_id].read();
+                self.nodes[gate.output_id].set(Some(left_value * right_value));
             });
             
             lambda_gates.par_iter().for_each(|gate| {
-                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].read_value()).collect();
-                let evaluated_ptr = Box::into_raw(Box::new(Some((gate.lambda)(arguments))));
-                self.nodes[gate.output_id].value.store(evaluated_ptr, Ordering::Relaxed);
+                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].read()).collect();
+                self.nodes[gate.output_id].set(Some((gate.lambda)(arguments)));
             });
 
         }
@@ -384,11 +390,11 @@ impl<F: Field> GraphBuilder<F> {
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
             let future_left_value = async {
-                self.nodes[assertion.left_id].read_value() 
+                self.nodes[assertion.left_id].read() 
             }.await;
 
             let future_right_value = async {
-                self.nodes[assertion.right_id].read_value()
+                self.nodes[assertion.right_id].read()
             }.await;
             
             if future_left_value != future_right_value {

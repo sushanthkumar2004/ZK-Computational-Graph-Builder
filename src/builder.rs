@@ -62,6 +62,7 @@ pub struct AddGate<F: Field> {
     depth: u64,
 }
 
+// Same structure as above, except it does multiplication instead. 
 #[derive(Debug)]
 pub struct MultiplyGate<F: Field> {
     left_input: WrappedNode<F>,
@@ -72,10 +73,8 @@ pub struct MultiplyGate<F: Field> {
 
 pub type Lambda<F> = fn(Vec<F>) -> F;
 
-/**
- * LambdaGate structure to define arbitary hints based on other node values
- * The function @lambda is used to determine the output.
-*/
+// LambdaGate structure to define arbitary hints based on other node values
+// The function @lambda is used to determine the output.
 #[derive(Debug)]
 pub struct LambdaGate<F: Field> {
     inputs: Vec<WrappedNode<F>>,
@@ -94,6 +93,8 @@ impl<F: Field> Builder<F> {
         }
     }
     
+    // allows you to initialize a single input 
+    // node in the graph 
     pub fn init(&mut self) -> WrappedNode<F> {
         let node = Arc::new(RwLock::new(Node {
             value: None,
@@ -105,6 +106,8 @@ impl<F: Field> Builder<F> {
         node
     }
 
+    // same as above but lets you initialize a vector of
+    // inputs, and updates counts as needed. 
     pub fn batch_init(&mut self, num_inputs: u64) -> Vec<WrappedNode<F>> {
         let init_count = self.internal_count; 
         let vector_input: Vec<WrappedNode<F>> = (0..num_inputs).into_par_iter().map(|i| {
@@ -118,17 +121,21 @@ impl<F: Field> Builder<F> {
         vector_input
     }
     
+    // declare a single constant node 
     pub fn constant(&mut self, value: F) -> WrappedNode<F> {
         let node = Arc::new(RwLock::new(Node {
             value: Some(value),
             depth: 0,
             id: self.internal_count,
         }));
+        // make sure to update internal_count of nodes
+        // so that we can assign the correct id to the next one 
         self.internal_count += 1; 
         self.constant_nodes.push(node.clone());
         node
     }
 
+    // same as above but lets you declare a vector of constants
     pub fn batch_constant(&mut self, values: &[F]) -> Vec<WrappedNode<F>> {
         let init_count = self.internal_count; 
         let vector_constant: Vec<WrappedNode<F>> = (0..values.len()).into_par_iter().map(|i| {
@@ -142,6 +149,8 @@ impl<F: Field> Builder<F> {
         vector_constant
     }
     
+    // instantiate an add gate between two nodes and get an output node
+    // that represents the addition of the two supplied nodes
     pub fn add(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.read().depth;
         let b_depth = b.read().depth;
@@ -178,7 +187,9 @@ impl<F: Field> Builder<F> {
     fn batch_add(&mut self, _left_arguments: &[WrappedNode<F>], _right_arguments: &[WrappedNode<F>]) -> Vec<WrappedNode<F>> {
         todo!()
     }
-    
+
+    // instantiate a multiply gate between two nodes and get an output node
+    // that represents the addition of the two supplied nodes
     pub fn mul(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.read().depth;
         let b_depth = b.read().depth;
@@ -215,6 +226,15 @@ impl<F: Field> Builder<F> {
         todo!()
     }
 
+    /*
+     * Allows for a hint to be given (useful for operations like division)
+     * 
+     * ARGS: 
+     * arguments: an array of nodes that serve as inputs to the lambda
+     * lambda: a function that relates the values of these nodes to the value of the output (which is returned)
+     * RETURNS:
+     * returns a node corresponding to the output of the lambda gate that is just in time filled once the arguments are computed. 
+     */
     pub fn hint(&mut self, arguments: &[&WrappedNode<F>], lambda: Lambda<F>) -> WrappedNode<F> {
         let depth_gate = arguments.iter().map(|arg| arg.read().depth).max().unwrap();
         let output_node = Arc::new(RwLock::new(Node {
@@ -245,6 +265,16 @@ impl<F: Field> Builder<F> {
         output_node
     }
     
+    /*
+     * Allows for a single assertion to be declared
+     * 
+     * ARGS: 
+     * left_arg: the left inputs
+     * right_arg: the right inputs
+     * The assertions will assert that left_args[i] = right_args[i]
+     * RETURNS:
+     * returns a vector of equality assertions
+     */
     pub fn assert_equal(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> EqualityAssertion<F> {
         let assertion = EqualityAssertion {
             left_node: a.clone(),
@@ -254,6 +284,16 @@ impl<F: Field> Builder<F> {
         assertion
     }
 
+    /*
+    * Allows for a batch of assertions to be declared
+    * 
+    * ARGS: 
+    * left_args: All the left inputs
+    * right_args: all the right inputs
+    * All assertions will be of the form left_args[i] = right_args[i]
+    * RETURNS:
+    * returns a vector of equality assertions
+    */
     pub fn batch_assert_equal(&mut self, left_args: &[WrappedNode<F>], right_args: &[WrappedNode<F>]) -> Vec<EqualityAssertion<F>> {
         assert_eq!(left_args.len(), right_args.len());
 
