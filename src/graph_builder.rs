@@ -1,5 +1,4 @@
 use std::{cmp::max, sync::{atomic::{AtomicPtr, Ordering}, Arc}};
-use parking_lot::RwLock;
 use rayon::prelude::*;
 
 use crate::field::Field;
@@ -58,7 +57,7 @@ impl<F: Field> Node<F> {
     }
 
     pub fn read_value(&self) -> F {
-        unsafe { self.value.load(Ordering::Relaxed).as_ref().unwrap().unwrap() }
+        unsafe { self.value.load(Ordering::Relaxed).as_ref().unwrap_or_else(|| panic!("Raw dereference failed!")).unwrap_or_else(|| panic!("Value unfilled at id {}!", self.id)) }
     }
 }
 
@@ -354,21 +353,21 @@ impl<F: Field> GraphBuilder<F> {
             // parallel iterate over all the gates, read the inputs and drive the outputs accordingly. 
             // I used unwrap_or_else to handle values that were unfilled. 
             add_gates.par_iter().for_each(|gate| {
-                let left_value = unsafe { self.nodes[gate.left_id].value.load(Ordering::Relaxed).as_ref().unwrap().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth)) };
-                let right_value = unsafe { self.nodes[gate.right_id].value.load(Ordering::Relaxed).as_ref().unwrap().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth)) };
+                let left_value = self.nodes[gate.left_id].read_value();
+                let right_value = self.nodes[gate.right_id].read_value();
                 let sum_ptr = Box::into_raw(Box::new(Some(left_value + right_value)));
                 self.nodes[gate.output_id].value.store(sum_ptr, Ordering::Relaxed);
             });
 
             multiply_gates.par_iter().for_each(|gate| {
-                let left_value = unsafe { self.nodes[gate.left_id].value.load(Ordering::Relaxed).as_ref().unwrap().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth)) };
-                let right_value = unsafe { self.nodes[gate.right_id].value.load(Ordering::Relaxed).as_ref().unwrap().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth)) };
+                let left_value = self.nodes[gate.left_id].read_value();
+                let right_value = self.nodes[gate.right_id].read_value();
                 let sum_ptr = Box::into_raw(Box::new(Some(left_value * right_value)));
                 self.nodes[gate.output_id].value.store(sum_ptr, Ordering::Relaxed);
             });
             
             lambda_gates.par_iter().for_each(|gate| {
-                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| unsafe { self.nodes[i].value.load(Ordering::Relaxed).as_ref().unwrap().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth)) }).collect();
+                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].read_value()).collect();
                 let evaluated_ptr = Box::into_raw(Box::new(Some((gate.lambda)(arguments))));
                 self.nodes[gate.output_id].value.store(evaluated_ptr, Ordering::Relaxed);
             });
@@ -385,11 +384,11 @@ impl<F: Field> GraphBuilder<F> {
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
             let future_left_value = async {
-                unsafe { self.nodes[assertion.left_id].value.load(Ordering::Relaxed).as_ref().unwrap() }
+                self.nodes[assertion.left_id].read_value() 
             }.await;
 
             let future_right_value = async {
-                unsafe { self.nodes[assertion.right_id].value.load(Ordering::Relaxed).as_ref().unwrap() }
+                self.nodes[assertion.right_id].read_value()
             }.await;
             
             if future_left_value != future_right_value {
