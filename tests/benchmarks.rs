@@ -133,7 +133,7 @@ fn test_large_input_buildersinglethread() {
     // 1 million inputs 
     let start_time = Instant::now();
 
-    let mut builder = BuilderSingleThread::new();
+    let mut builder = BuilderSingleThread::<Fp>::new();
 
     let time_to_batch_init = Instant::now();
     for _i in 0..num_inputs {
@@ -143,7 +143,7 @@ fn test_large_input_buildersinglethread() {
 
     let time_to_batch_const = Instant::now();
     for _i in 0..num_inputs {
-        constants.push(builder.constant(2));
+        constants.push(builder.constant(Fp::from(2)));
     }
     println!("Time to batch const: {:?}", Instant::now() - time_to_batch_const);
 
@@ -174,7 +174,7 @@ fn test_large_input_buildersinglethread() {
     }
 
     let time_to_fill_nodes = Instant::now();
-    builder.fill_nodes(vec![100; num_inputs as usize]);
+    builder.fill_nodes(vec![Fp::from(100); num_inputs as usize]);
     println!("Time to fill nodes: {:?}", Instant::now() - time_to_fill_nodes);
 
     let check_constraints = builder.check_constraints();

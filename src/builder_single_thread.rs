@@ -1,60 +1,62 @@
 use std::{cmp::max, cell::RefCell, rc::Rc};
 
+use crate::field::Field;
+
 #[derive(Debug)]
-pub struct LevelGates {
-    adder_gates: Vec<AddGate>,
-    multiplier_gates: Vec<MultiplyGate>,
+pub struct LevelGates<F: Field> {
+    adder_gates: Vec<AddGate<F>>,
+    multiplier_gates: Vec<MultiplyGate<F>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct EqualityAssertion {
-    left_node: Rc<RefCell<Node>>,
-    right_node: Rc<RefCell<Node>>,
+pub struct EqualityAssertion<F: Field> {
+    left_node: Rc<RefCell<Node<F>>>,
+    right_node: Rc<RefCell<Node<F>>>,
 }
 
 #[derive(Debug)]
-pub struct BuilderSingleThread {
-    input_nodes: Vec<Rc<RefCell<Node>>>,
-    constant_nodes: Vec<Rc<RefCell<Node>>>,
-    gates_per_level: Vec<LevelGates>,
-    assertions: Vec<EqualityAssertion>,
+pub struct BuilderSingleThread<F: Field> {
+    input_nodes: Vec<Rc<RefCell<Node<F>>>>,
+    constant_nodes: Vec<Rc<RefCell<Node<F>>>>,
+    gates_per_level: Vec<LevelGates<F>>,
+    assertions: Vec<EqualityAssertion<F>>,
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct Node {
-    value: Option<u64>,
+pub struct Node<F: Field> {
+    value: Option<F>,
     depth: u64,
 }
 
-impl Node {
-    fn set_value(&mut self, value: Option<u64>) {
+impl<F: Field> Node<F> {
+    fn set_value(&mut self, value: Option<F>) {
         self.value = value;
     }
 }
 
 #[derive(Debug)]
-pub struct AddGate {
-    left_input: Rc<RefCell<Node>>,
-    right_input: Rc<RefCell<Node>>,
-    output: Rc<RefCell<Node>>,
+pub struct AddGate<F: Field> {
+    left_input: Rc<RefCell<Node<F>>>,
+    right_input: Rc<RefCell<Node<F>>>,
+    output: Rc<RefCell<Node<F>>>,
     depth: u64,
 }
 
 #[derive(Debug)]
-pub struct MultiplyGate {
-    left_input: Rc<RefCell<Node>>,
-    right_input: Rc<RefCell<Node>>,
-    output: Rc<RefCell<Node>>,
+pub struct MultiplyGate<F: Field> {
+    left_input: Rc<RefCell<Node<F>>>,
+    right_input: Rc<RefCell<Node<F>>>,
+    output: Rc<RefCell<Node<F>>>,
     depth: u64,
 }
 
-impl Default for BuilderSingleThread {
+impl<F: Field> Default for BuilderSingleThread<F> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BuilderSingleThread {
+impl<F: Field> BuilderSingleThread<F> {
     pub fn new() -> Self {
         Self {
             input_nodes: Vec::new(),
@@ -64,7 +66,7 @@ impl BuilderSingleThread {
         }
     }
     
-    pub fn init(&mut self) -> Rc<RefCell<Node>> {
+    pub fn init(&mut self) -> Rc<RefCell<Node<F>>> {
         let node = Rc::new(RefCell::new(Node {
             value: None,
             depth: 0,
@@ -73,7 +75,7 @@ impl BuilderSingleThread {
         node
     }
     
-    pub fn constant(&mut self, value: u64) -> Rc<RefCell<Node>> {
+    pub fn constant(&mut self, value: F) -> Rc<RefCell<Node<F>>> {
         let node = Rc::new(RefCell::new(Node {
             value: Some(value),
             depth: 0,
@@ -82,7 +84,7 @@ impl BuilderSingleThread {
         node
     }
     
-    pub fn add(&mut self, a: &Rc<RefCell<Node>>, b: &Rc<RefCell<Node>>) -> Rc<RefCell<Node>> {
+    pub fn add(&mut self, a: &Rc<RefCell<Node<F>>>, b: &Rc<RefCell<Node<F>>>) -> Rc<RefCell<Node<F>>> {
         let depth_gate = max(a.borrow().depth, b.borrow().depth);
         let output_node = Rc::new(RefCell::new(Node {
             value: None,
@@ -107,7 +109,7 @@ impl BuilderSingleThread {
         output_node
     }
     
-    pub fn mul(&mut self, a: &Rc<RefCell<Node>>, b: &Rc<RefCell<Node>>) -> Rc<RefCell<Node>> {
+    pub fn mul(&mut self, a: &Rc<RefCell<Node<F>>>, b: &Rc<RefCell<Node<F>>>) -> Rc<RefCell<Node<F>>> {
         let depth_gate = max(a.borrow().depth, b.borrow().depth);
         let output_node = Rc::new(RefCell::new(Node {
             value: None,
@@ -133,7 +135,7 @@ impl BuilderSingleThread {
         output_node
     }
     
-    pub fn assert_equal(&mut self, a: &Rc<RefCell<Node>>, b: &Rc<RefCell<Node>>) -> EqualityAssertion {
+    pub fn assert_equal(&mut self, a: &Rc<RefCell<Node<F>>>, b: &Rc<RefCell<Node<F>>>) -> EqualityAssertion<F> {
         let assertion = EqualityAssertion {
             left_node: a.clone(),
             right_node: b.clone(),
@@ -142,7 +144,7 @@ impl BuilderSingleThread {
         assertion
     }
     
-    pub fn fill_nodes(&mut self, node_values: Vec<u64>) {
+    pub fn fill_nodes(&mut self, node_values: Vec<F>) {
         for i in 0..node_values.len() {
             self.input_nodes[i].borrow_mut().value = Some(node_values[i]);
         }
