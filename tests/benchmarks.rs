@@ -120,8 +120,8 @@ async fn test_large_input_builder() {
 
 // Somehow this ends up filling the graph the fastest, but on my friends computer this was slower\
 // This is just the single threaded implementation of the above version. 
-#[test]
-fn test_large_input_buildersinglethread() {
+#[tokio::test]
+async fn test_large_input_buildersinglethread() {
     let n: usize = 24; 
 
     let num_inputs = 2_i32.pow(n as u32); 
@@ -177,7 +177,7 @@ fn test_large_input_buildersinglethread() {
     builder.fill_nodes(vec![Fp::from(100); num_inputs as usize]);
     println!("Time to fill nodes: {:?}", Instant::now() - time_to_fill_nodes);
 
-    let check_constraints = builder.check_constraints();
+    let check_constraints = builder.check_constraints().await;
     let end_time = Instant::now();    
     println!("Elapsed time: {:?}", end_time - start_time);
     println!("Constraints Passed? {:?}", check_constraints);

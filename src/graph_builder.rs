@@ -348,7 +348,6 @@ impl<F: Field> GraphBuilder<F> {
 
             // parallel iterate over all the gates, read the inputs and drive the outputs accordingly. 
             // I used unwrap_or_else to handle values that were unfilled. 
-
             add_gates.par_iter().for_each(|gate| {
                 let mut output = self.nodes[gate.output_id].write();
                 let left_value = self.nodes[gate.left_id].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
@@ -362,7 +361,7 @@ impl<F: Field> GraphBuilder<F> {
                 let right_value = self.nodes[gate.right_id].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
                 output.set_value(Some(left_value * right_value));
             });
-
+            
             lambda_gates.par_iter().for_each(|gate| {
                 let mut output = self.nodes[gate.output_id].write();
                 let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth))).collect();

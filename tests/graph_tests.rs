@@ -138,7 +138,3 @@ async fn test_lambda_gates() {
     assert_eq!(c.read().value.unwrap().value, 28782);
     assert_eq!(d.read().value.unwrap().value, 234);
 }
-
-
-
-

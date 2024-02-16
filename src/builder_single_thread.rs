@@ -1,4 +1,5 @@
 use std::{cmp::max, cell::RefCell, rc::Rc};
+use rayon::iter::IntoParallelRefIterator;
 
 use crate::field::Field;
 
@@ -163,12 +164,21 @@ impl<F: Field> BuilderSingleThread<F> {
         }
     }
     
-    pub fn check_constraints(&mut self) -> bool {
+    pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
-            let left_value = assertion.left_node.borrow().value;
-            let right_value = assertion.right_node.borrow().value;
-            if left_value != right_value {
-                eprint!("Equality Assertion failed!");
+            let future_left_value = async {
+                assertion.left_node.borrow().value.unwrap()
+            }.await;
+
+            let future_right_value = async {
+                assertion.right_node.borrow().value.unwrap()
+            }.await;
+            
+            if future_left_value != future_right_value {
+                let left_value = assertion.left_node.borrow();
+                let right_value = assertion.right_node.borrow();
+
+                eprintln!("Equality failed at following nodes: {:?}, {:?}", left_value, right_value);
                 return false;
             }
         }
