@@ -1,5 +1,4 @@
 use std::{cmp::max, cell::RefCell, rc::Rc};
-use rayon::iter::IntoParallelRefIterator;
 
 use crate::field::Field;
 

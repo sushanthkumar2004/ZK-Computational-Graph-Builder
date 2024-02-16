@@ -1,10 +1,10 @@
-use std::{cmp::max, sync::{Arc}};
+use std::{cmp::max, sync::Arc};
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
 use crate::field::Field;
 
-type WrappedNode<F> = Arc<RwLock<Node<F>>>;
+type WrappedNode<F> = Arc<Node<F>>;
 
 // Keeps track of all gates at the level
 // Note that the gates are seperated by type
@@ -43,9 +43,9 @@ pub struct GraphBuilder<F: Field> {
 
 // node struct to store the value and depth of the node
 // ID is just used for debugging purposes. 
-#[derive(Clone, Default, Debug)]
+#[derive(Default, Debug)]
 pub struct Node<F: Field> {
-    pub value: Option<F>,
+    pub value: RwLock<Option<F>>,
     pub depth: u64,
     pub id: usize,
 }
@@ -53,7 +53,7 @@ pub struct Node<F: Field> {
 // sets the value of the node
 impl<F: Field> Node<F> {
     pub fn set_value(&mut self, value: Option<F>) {
-        self.value = value;
+        *self.value.write() = value;
     }
 }
 
@@ -105,11 +105,11 @@ impl<F: Field> GraphBuilder<F> {
     
     // method to initialize a new node. 
     pub fn init(&mut self) -> WrappedNode<F> {
-        let node = Arc::new(RwLock::new(Node {
-            value: None,
+        let node = Arc::new(Node {
+            value: RwLock::new(None),
             depth: 0,
             id: self.next_id,
-        }));
+        });
         self.next_id += 1; 
         self.nodes.push(node.clone());
         node
@@ -120,11 +120,11 @@ impl<F: Field> GraphBuilder<F> {
     pub fn batch_init(&mut self, num_inputs: usize) -> Vec<WrappedNode<F>> {
         let init_count = self.next_id; 
         let vector_input: Vec<WrappedNode<F>> = (0..num_inputs).into_par_iter().map(|i| {
-            Arc::new(RwLock::new(Node {
-                value: None,
+            Arc::new(Node {
+                value: RwLock::new(None),
                 depth: 0,
                 id: init_count + i,
-            }))}).collect();
+            })}).collect();
         self.nodes.extend(vector_input.clone());
         self.next_id += num_inputs;
         vector_input
@@ -136,23 +136,23 @@ impl<F: Field> GraphBuilder<F> {
     // safely override the nodes that it needs, but the asynchronous function builder.check_constraints()
     // may fail if the value is overriden by the user. 
     pub fn set(&mut self, node: &WrappedNode<F>, value: F) {
-        node.write().set_value(Some(value));
+        *node.clone().value.write() = Some(value)
     }
 
     // Allows you to set a vector of inputs 
     pub fn batch_set(&mut self, nodes: &[WrappedNode<F>], values: &[F]) {
         nodes.par_iter().enumerate().for_each(|(i, node)| {
-            node.write().set_value(Some(values[i]));
+            *node.clone().value.write() = Some(values[i])
         });        
     }
     
     // declare a constant node in the graph 
     pub fn constant(&mut self, value: F) -> WrappedNode<F> {
-        let node = Arc::new(RwLock::new(Node {
-            value: Some(value),
+        let node = Arc::new(Node {
+            value: RwLock::new(Some(value)),
             depth: 0,
             id: self.next_id,
-        }));
+        });
         self.next_id += 1; 
         self.nodes.push(node.clone());
         node
@@ -162,11 +162,11 @@ impl<F: Field> GraphBuilder<F> {
     pub fn batch_constant(&mut self, values: &[F]) -> Vec<WrappedNode<F>> {
         let init_count = self.next_id; 
         let vector_constant: Vec<WrappedNode<F>> = (0..values.len()).into_par_iter().map(|i| {
-            Arc::new(RwLock::new(Node {
-                value: Some(values[i]),
+            Arc::new(Node {
+                value: RwLock::new(Some(values[i])),
                 depth: 0,
                 id: init_count + i,
-            }))}).collect();
+            })}).collect();
         self.nodes.extend(vector_constant.clone());
         self.next_id += values.len();
         vector_constant
@@ -175,21 +175,21 @@ impl<F: Field> GraphBuilder<F> {
     // instantiate an add gate between two nodes and get an output node
     // that represents the addition of the two supplied nodes
     pub fn add(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
-        let a_depth = a.read().depth;
-        let b_depth = b.read().depth;
+        let a_depth = a.depth;
+        let b_depth = b.depth;
 
         let depth_gate = max(a_depth, b_depth);
 
-        let output_node = Arc::new(RwLock::new(Node {
-            value: None,
+        let output_node = Arc::new(Node {
+            value: RwLock::new(None),
             depth: depth_gate + 1,
             id: self.next_id,
-        }));
+        });
         
         let add_gate = AddGate {
-            left_id: a.read().id,
-            right_id: b.read().id,
-            output_id: output_node.read().id,
+            left_id: a.id,
+            right_id: b.id,
+            output_id: output_node.id,
             depth: depth_gate,
         };
 
@@ -211,21 +211,21 @@ impl<F: Field> GraphBuilder<F> {
     // instantiate a multiply gate between two nodes and get an output node
     // that represents the addition of the two supplied nodes
     pub fn mul(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
-        let a_depth = a.read().depth;
-        let b_depth = b.read().depth;
+        let a_depth = a.depth;
+        let b_depth = b.depth;
 
         let depth_gate = max(a_depth, b_depth);
 
-        let output_node = Arc::new(RwLock::new(Node {
-            value: None,
+        let output_node = Arc::new(Node {
+            value: RwLock::new(None),
             depth: depth_gate + 1,
             id: self.next_id,
-        }));
+        });
 
         let multiply_gate = MultiplyGate {
-            left_id: a.read().id,
-            right_id: b.read().id,
-            output_id: output_node.read().id,
+            left_id: a.id,
+            right_id: b.id,
+            output_id: output_node.id,
             depth: depth_gate,
         };
 
@@ -255,20 +255,20 @@ impl<F: Field> GraphBuilder<F> {
      */
 
     pub fn hint(&mut self, arguments: &[&WrappedNode<F>], lambda: Lambda<F>) -> WrappedNode<F> {
-        let depth_gate = arguments.iter().map(|arg| arg.read().depth).max().unwrap();
+        let depth_gate = arguments.iter().map(|arg| arg.depth).max().unwrap();
 
-        let output_node = Arc::new(RwLock::new(Node {
-            value: None,
+        let output_node = Arc::new(Node {
+            value: RwLock::new(None),
             depth: depth_gate + 1,
             id: self.next_id,
-        }));
+        });
         
 
-        let argument_ids: Vec<_> = arguments.iter().map(|node| node.read().id).collect();
+        let argument_ids: Vec<_> = arguments.iter().map(|node| node.id).collect();
 
         let lambda_gate = LambdaGate {
             input_ids: argument_ids,
-            output_id: output_node.read().id,
+            output_id: output_node.id,
             lambda,
             depth: depth_gate,
         };
@@ -301,8 +301,8 @@ impl<F: Field> GraphBuilder<F> {
 
     pub fn assert_equal(&mut self, left_arg: &WrappedNode<F>, right_arg: &WrappedNode<F>) -> EqualityAssertion {
         let assertion = EqualityAssertion {
-            left_id: left_arg.read().id,
-            right_id: right_arg.read().id,
+            left_id: left_arg.id,
+            right_id: right_arg.id,
         };
         self.assertions.push(assertion.clone());
         assertion
@@ -324,8 +324,8 @@ impl<F: Field> GraphBuilder<F> {
 
         let new_assertions: Vec<EqualityAssertion> = (0..right_args.len()).into_par_iter().map(|i| {
             EqualityAssertion {
-                left_id: left_args[i].read().id,
-                right_id: right_args[i].read().id,
+                left_id: left_args[i].id,
+                right_id: right_args[i].id,
             }}).collect();
         self.assertions.extend(new_assertions.clone());
         new_assertions
@@ -349,23 +349,20 @@ impl<F: Field> GraphBuilder<F> {
             // parallel iterate over all the gates, read the inputs and drive the outputs accordingly. 
             // I used unwrap_or_else to handle values that were unfilled. 
             add_gates.par_iter().for_each(|gate| {
-                let mut output = self.nodes[gate.output_id].write();
-                let left_value = self.nodes[gate.left_id].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
-                let right_value = self.nodes[gate.right_id].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
-                output.set_value(Some(left_value + right_value));
+                let left_value = self.nodes[gate.left_id].value.read().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
+                let right_value = self.nodes[gate.right_id].value.read().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
+                *self.nodes[gate.output_id].value.write() = Some(left_value + right_value);
             });
 
             multiply_gates.par_iter().for_each(|gate| {
-                let mut output = self.nodes[gate.output_id].write();
-                let left_value = self.nodes[gate.left_id].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
-                let right_value = self.nodes[gate.right_id].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
-                output.set_value(Some(left_value * right_value));
+                let left_value = self.nodes[gate.left_id].value.read().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
+                let right_value = self.nodes[gate.right_id].value.read().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth));
+                *self.nodes[gate.output_id].value.write() = Some(left_value * right_value);
             });
             
             lambda_gates.par_iter().for_each(|gate| {
-                let mut output = self.nodes[gate.output_id].write();
-                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].read().value.unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth))).collect();
-                output.set_value(Some((gate.lambda)(arguments)));
+                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].value.read().unwrap_or_else(|| panic!("Value not filled at depth {}! Did you set all inputs?", gate.depth))).collect();
+                *self.nodes[gate.output_id].value.write() = Some((gate.lambda)(arguments));
             });
 
         }
@@ -380,16 +377,16 @@ impl<F: Field> GraphBuilder<F> {
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
             let future_left_value = async {
-                self.nodes[assertion.left_id].read().value.unwrap()
+                self.nodes[assertion.left_id].value.read().unwrap()
             }.await;
 
             let future_right_value = async {
-                self.nodes[assertion.right_id].read().value.unwrap()
+                self.nodes[assertion.right_id].value.read().unwrap()
             }.await;
             
             if future_left_value != future_right_value {
-                let left_value = self.nodes[assertion.left_id].read();
-                let right_value = self.nodes[assertion.right_id].read();
+                let left_value = self.nodes[assertion.left_id].clone();
+                let right_value = self.nodes[assertion.right_id].clone();
 
                 eprintln!("Equality failed at following nodes: {:?}, {:?}", left_value, right_value);
                 return false;
