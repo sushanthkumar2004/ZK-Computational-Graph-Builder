@@ -2,16 +2,12 @@ use std::ops::*;
 
 // We want our field to support the 4 operations  
 // and Send, Sync so that we can use parallel iterators over it. 
-pub trait Field: std::fmt::Debug + PartialEq + std::marker::Sized + Mul<Output=Self> + Add<Output=Self> + Sub<Output=Self> + Div<Output=Self> + From<u64> + Sync + Send + Clone + Copy {
-    type Output = Self;
-}
+pub trait Field: std::fmt::Debug + PartialEq + std::marker::Sized + Mul<Output=Self> + Add<Output=Self> + Sub<Output=Self> + Div<Output=Self> + From<u64> + Sync + Send + Clone + Copy {}
 
 // Allows us to declare GaloisField<p> = Z/pZ where p is a prime. 
 // Note that this doesnt actually enforce p to be prime, but
 // otherwise it's not a field. 
-impl<const MODULUS: u64> Field for GaloisField<MODULUS> {
-    type Output = Self;
-}
+impl<const MODULUS: u64> Field for GaloisField<MODULUS> {}
 
 // value stores the reduced value mod MODULUS
 #[derive(Debug, PartialEq, Clone, Copy)]

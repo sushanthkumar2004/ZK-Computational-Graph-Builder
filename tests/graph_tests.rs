@@ -22,11 +22,11 @@ fn test_basic_function() {
 
     builder.fill_nodes();
 
-    assert_eq!(x.value.read().unwrap().value, 5);
-    assert_eq!(x_squared.value.read().unwrap().value, 25);
-    assert_eq!(five.value.read().unwrap().value, 5);
-    assert_eq!(x_squared_plus_5.value.read().unwrap().value, 30);
-    assert_eq!(y.value.read().unwrap().value, 35);
+    assert_eq!(x.read_value().value, 5);
+    assert_eq!(x_squared.read_value().value, 25);
+    assert_eq!(five.read_value().value, 5);
+    assert_eq!(x_squared_plus_5.read_value().value, 30);
+    assert_eq!(y.read_value().value, 35);
 }
 
 #[test]
@@ -49,15 +49,15 @@ fn test_multiple_access() {
     builder.set(&w, Fp::from(6));
 
     builder.fill_nodes();
-    assert_eq!(x.value.read().unwrap().value, 5);
-    assert_eq!(y.value.read().unwrap().value, 5);
-    assert_eq!(z.value.read().unwrap().value, 45);
-    assert_eq!(w.value.read().unwrap().value, 6);
+    assert_eq!(x.read_value().value, 5);
+    assert_eq!(y.read_value().value, 5);
+    assert_eq!(z.read_value().value, 45);
+    assert_eq!(w.read_value().value, 6);
 
-    assert_eq!(x2.value.read().unwrap().value, 25);
-    assert_eq!(xy.value.read().unwrap().value, 25);
-    assert_eq!(xz.value.read().unwrap().value, 225);
-    assert_eq!(xw.value.read().unwrap().value, 30);
+    assert_eq!(x2.read_value().value, 25);
+    assert_eq!(xy.read_value().value, 25);
+    assert_eq!(xz.read_value().value, 225);
+    assert_eq!(xw.read_value().value, 30);
 }
 
 #[tokio::test]
@@ -133,8 +133,8 @@ async fn test_lambda_gates() {
     let passed_constraints = builder.check_constraints().await; 
 
     assert!(passed_constraints);
-    assert_eq!(a.value.read().unwrap().value, 234);
-    assert_eq!(b.value.read().unwrap().value, 123);
-    assert_eq!(c.value.read().unwrap().value, 28782);
-    assert_eq!(d.value.read().unwrap().value, 234);
+    assert_eq!(a.read_value().value, 234);
+    assert_eq!(b.read_value().value, 123);
+    assert_eq!(c.read_value().value, 28782);
+    assert_eq!(d.read_value().value, 234);
 }
