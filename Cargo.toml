@@ -16,7 +16,3 @@ opt-level = 3
 
 [profile.release]
 opt-level = 3
-
-[env]
-RUST_TEST_THREADS = "8"
-RAYON_NUM_THREADS = "8"

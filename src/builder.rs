@@ -1,20 +1,18 @@
 use std::{cmp::max, sync::{atomic::{AtomicPtr, Ordering}, Arc}};
 use rayon::prelude::*;
 
-use crate::field::Field;
-
 // all nodes passed between the graphs need to be wrapped in Arc
 // so that multiple threads can read the same node concurrently. 
-type WrappedNode<F> = Arc<Node<F>>;
+type WrappedNode = Arc<Node>;
 
 // Keeps track of all gates at the level
 // Note that the gates are seperated by type
 // since otherwise some threads could take much longer than others to finish. 
 #[derive(Debug)]
-pub struct LevelGates<F: Field> {
+pub struct LevelGates {
     adder_gates: Vec<AddGate>,
     multiplier_gates: Vec<MultiplyGate>,
-    lambda_gates: Vec<LambdaGate<F>>,
+    lambda_gates: Vec<LambdaGate>,
 }
 
 // Struct to keep track of an equality assertion between two nodes
@@ -35,9 +33,9 @@ pub struct EqualityAssertion {
 // NEXT_ID is basically used to assign an identifier to each node. 
 // As a node is added to the graph, NEXT_ID is incremented by 1
 #[derive(Debug, Default)]
-pub struct GraphBuilder<F: Field> {
-    nodes: Vec<WrappedNode<F>>, 
-    gates: Vec<LevelGates<F>>,
+pub struct Builder {
+    nodes: Vec<WrappedNode>, 
+    gates: Vec<LevelGates>,
     assertions: Vec<EqualityAssertion>,
     next_id: usize,
 }
@@ -45,15 +43,15 @@ pub struct GraphBuilder<F: Field> {
 // node struct to store the value and depth of the node
 // ID is just used for debugging purposes. 
 #[derive(Default, Debug)]
-pub struct Node<F: Field> {
-    pub value: AtomicPtr<Option<F>>,
+pub struct Node {
+    pub value: AtomicPtr<Option<u32>>,
     pub depth: u64,
     pub id: usize,
 }
 
-impl<F: Field> Node<F> {
+impl Node {
     // allows the user to essentially reset the value in the box
-    pub fn set(&self, value: Option<F>) {
+    pub fn set(&self, value: Option<u32>) {
         let value_ptr = Box::into_raw(Box::new(value));
         self.value.store(value_ptr, Ordering::Relaxed);
     }
@@ -62,7 +60,7 @@ impl<F: Field> Node<F> {
     // Note that Rust cannot gaurantee the .as_ref() operation is safe,
     // but I can ensure that this will not lead to undefined behavior. 
     // Also, there seems to be no other way to even access the value. 
-    pub fn read(&self) -> F {
+    pub fn read(&self) -> u32 {
         unsafe { self.value.load(Ordering::Relaxed).as_ref().unwrap_or_else(|| panic!("Raw dereference failed!")).unwrap_or_else(|| panic!("Value unfilled at id {}!", self.id)) }
     }
 }
@@ -85,7 +83,7 @@ pub struct MultiplyGate {
     output_id: usize,
 }
 
-pub type Lambda<F> = fn(Vec<F>) -> F;
+pub type Lambda = fn(Vec<u32>) -> u32;
 
 // LambdaGate structure to define arbitary hints based on other node values
 // The function LAMBDA is used to determine the output.
@@ -93,14 +91,14 @@ pub type Lambda<F> = fn(Vec<F>) -> F;
 // OUTPUT_ID stores the id of the output
 // DEPTH is defined as in README.
 #[derive(Debug)]
-pub struct LambdaGate<F: Field> {
+pub struct LambdaGate {
     input_ids: Vec<usize>,
     output_id: usize,
-    lambda: Lambda<F>,
+    lambda: Lambda,
 }
 
 // Note that all operations are done in F
-impl<F: Field> GraphBuilder<F> {
+impl Builder {
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),
@@ -111,7 +109,7 @@ impl<F: Field> GraphBuilder<F> {
     }
     
     // method to initialize a new node. 
-    pub fn init(&mut self) -> WrappedNode<F> {
+    pub fn init(&mut self) -> WrappedNode {
         let node = Arc::new(Node {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: 0,
@@ -124,9 +122,9 @@ impl<F: Field> GraphBuilder<F> {
     }
 
     // allows one to batch initialize a vector of inputs of size num_inputs using multithreading
-    pub fn batch_init(&mut self, num_inputs: usize) -> Vec<WrappedNode<F>> {
+    pub fn batch_init(&mut self, num_inputs: usize) -> Vec<WrappedNode> {
         let init_count = self.next_id; 
-        let vector_input: Vec<WrappedNode<F>> = (0..num_inputs).into_par_iter().map(|i| {
+        let vector_input: Vec<WrappedNode> = (0..num_inputs).into_par_iter().map(|i| {
             Arc::new(Node {
                 value: AtomicPtr::new(Box::into_raw(Box::new(None))),
                 depth: 0,
@@ -142,19 +140,19 @@ impl<F: Field> GraphBuilder<F> {
     // that are driven by outputs in gates. Calling builder.fill_nodes() will
     // safely override the nodes that it needs, but the asynchronous function builder.check_constraints()
     // may fail if the value is overriden by the user. 
-    pub fn set(&mut self, node: &WrappedNode<F>, value: F) {
+    pub fn set(&mut self, node: WrappedNode, value: u32) {
         node.set(Some(value));
     }
 
     // Allows you to set a vector of inputs 
-    pub fn batch_set(&mut self, nodes: &[WrappedNode<F>], values: &[F]) {
+    pub fn batch_set(&mut self, nodes: &[WrappedNode], values: &[u32]) {
         nodes.par_iter().enumerate().for_each(|(i, node)| {
             node.set(Some(values[i]));
         });        
     }
     
     // declare a constant node in the graph 
-    pub fn constant(&mut self, value: F) -> WrappedNode<F> {
+    pub fn constant(&mut self, value: u32) -> WrappedNode {
         let node = Arc::new(Node {
             value: AtomicPtr::new(Box::into_raw(Box::new(Some(value)))),
             depth: 0,
@@ -166,9 +164,9 @@ impl<F: Field> GraphBuilder<F> {
     }
 
     // declare a batch of constants given a vector of values
-    pub fn batch_constant(&mut self, values: &[F]) -> Vec<WrappedNode<F>> {
+    pub fn batch_constant(&mut self, values: &[u32]) -> Vec<WrappedNode> {
         let init_count = self.next_id; 
-        let vector_constant: Vec<WrappedNode<F>> = (0..values.len()).into_par_iter().map(|i| {
+        let vector_constant: Vec<WrappedNode> = (0..values.len()).into_par_iter().map(|i| {
             Arc::new(Node {
                 value: AtomicPtr::new(Box::into_raw(Box::new(Some(values[i])))),
                 depth: 0,
@@ -181,7 +179,7 @@ impl<F: Field> GraphBuilder<F> {
     
     // instantiate an add gate between two nodes and get an output node
     // that represents the addition of the two supplied nodes
-    pub fn add(&mut self, a: WrappedNode<F>, b: WrappedNode<F>) -> WrappedNode<F> {
+    pub fn add(&mut self, a: WrappedNode, b: WrappedNode) -> WrappedNode {
         let a_depth = a.depth;
         let b_depth = b.depth;
 
@@ -216,7 +214,7 @@ impl<F: Field> GraphBuilder<F> {
     
     // instantiate a multiply gate between two nodes and get an output node
     // that represents the addition of the two supplied nodes
-    pub fn mul(&mut self, a: WrappedNode<F>, b: WrappedNode<F>) -> WrappedNode<F> {
+    pub fn mul(&mut self, a: WrappedNode, b: WrappedNode) -> WrappedNode {
         let a_depth = a.depth;
         let b_depth = b.depth;
 
@@ -259,7 +257,7 @@ impl<F: Field> GraphBuilder<F> {
      * returns a node corresponding to the output of the lambda gate that is just in time filled once the arguments are computed. 
      */
 
-    pub fn hint(&mut self, arguments: &[WrappedNode<F>], lambda: Lambda<F>) -> WrappedNode<F> {
+    pub fn hint(&mut self, arguments: &[WrappedNode], lambda: Lambda) -> WrappedNode {
         // read in arguments which should be other nodes in the graph
         let depth_gate = arguments.iter().map(|arg| arg.depth).max().unwrap();
 
@@ -306,7 +304,7 @@ impl<F: Field> GraphBuilder<F> {
      * returns a vector of equality assertions
      */
 
-    pub fn assert_equal(&mut self, left_arg: WrappedNode<F>, right_arg: WrappedNode<F>) -> EqualityAssertion {
+    pub fn assert_equal(&mut self, left_arg: WrappedNode, right_arg: WrappedNode) -> EqualityAssertion {
         let assertion = EqualityAssertion {
             left_id: left_arg.id,
             right_id: right_arg.id,
@@ -326,7 +324,7 @@ impl<F: Field> GraphBuilder<F> {
      * returns a vector of equality assertions
      */
 
-    pub fn batch_assert_equal(&mut self, left_args: &[WrappedNode<F>], right_args: &[WrappedNode<F>]) -> Vec<EqualityAssertion> {
+    pub fn batch_assert_equal(&mut self, left_args: &[WrappedNode], right_args: &[WrappedNode]) -> Vec<EqualityAssertion> {
         assert_eq!(left_args.len(), right_args.len());
 
         let new_assertions: Vec<EqualityAssertion> = (0..right_args.len()).into_par_iter().map(|i| {

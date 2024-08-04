@@ -1,35 +1,35 @@
-use takehome::{field::GaloisField, graph_builder::*};
-pub type Fp = GaloisField::<65537>;
+use takehome::builder::*;
+use std::time::Instant;
 
 // equivalent to the lambda x -> x/8 but written as a "vector-function". 
-fn lambda_div8(val: Vec<Fp>) -> Fp {
+fn lambda_div8(val: Vec<u32>) -> u32 {
     assert_eq!(val.len(), 1);
-    val[0] / Fp::from(8)
+    val[0] / 8
 }
 
 #[test]
 fn test_basic_function() {
-    let mut builder = GraphBuilder::<Fp>::new();
+    let mut builder = Builder::new();
 
     let x = builder.init();
     let x_squared = builder.mul(x.clone(), x.clone());
-    let five = builder.constant(Fp::from(5));
+    let five = builder.constant(5);
     let x_squared_plus_5 = builder.add(x_squared.clone(), five.clone());
     let y = builder.add(x_squared_plus_5.clone(), x.clone());
 
-    builder.set(&x, Fp::from(5));
+    builder.set(x.clone(), 5);
     builder.fill_nodes();
 
-    assert_eq!(x.read().value, 5);
-    assert_eq!(x_squared.read().value, 25);
-    assert_eq!(five.read().value, 5);
-    assert_eq!(x_squared_plus_5.read().value, 30);
-    assert_eq!(y.read().value, 35);
+    assert_eq!(x.read(), 5);
+    assert_eq!(x_squared.read(), 25);
+    assert_eq!(five.read(), 5);
+    assert_eq!(x_squared_plus_5.read(), 30);
+    assert_eq!(y.read(), 35);
 }
 
 #[test]
 fn test_multiple_access() {
-    let mut builder = GraphBuilder::<Fp>::new();
+    let mut builder = Builder::new();
 
     let x = builder.init();
     let y = builder.init();
@@ -41,37 +41,37 @@ fn test_multiple_access() {
     let xz = builder.mul(x.clone(), z.clone());
     let xw = builder.mul(x.clone(), w.clone());
 
-    builder.set(&x, Fp::from(5));
-    builder.set(&y, Fp::from(5));
-    builder.set(&z, Fp::from(45));
-    builder.set(&w, Fp::from(6));
+    builder.set(x.clone(), 5);
+    builder.set(y.clone(), 5);
+    builder.set(z.clone(), 45);
+    builder.set(w.clone(), 6);
 
     builder.fill_nodes();
-    assert_eq!(x.read(), Fp::from(5));
-    assert_eq!(y.read(), Fp::from(5));
-    assert_eq!(z.read(), Fp::from(45));
-    assert_eq!(w.read(), Fp::from(6));
+    assert_eq!(x.read(), 5);
+    assert_eq!(y.read(), 5);
+    assert_eq!(z.read(), 45);
+    assert_eq!(w.read(), 6);
 
-    assert_eq!(x2.read(), Fp::from(25));
-    assert_eq!(xy.read(), Fp::from(25));
-    assert_eq!(xz.read(), Fp::from(225));
-    assert_eq!(xw.read(), Fp::from(30));
+    assert_eq!(x2.read(), 25);
+    assert_eq!(xy.read(), 25);
+    assert_eq!(xz.read(), 225);
+    assert_eq!(xw.read(), 30);
 }
 
 #[tokio::test]
 async fn test_constraints() {
-    let mut builder = GraphBuilder::<Fp>::new();
+    let mut builder = Builder::new();
     let a = builder.init();
-    let one = builder.constant(Fp::from(1)); 
-    let eight = builder.constant(Fp::from(8));
+    let one = builder.constant(1); 
+    let eight = builder.constant(8);
 
     let b = builder.add(a.clone(), one); 
 
     let c = builder.init();
     let c_times_8 = builder.mul(c.clone(), eight.clone());
 
-    builder.set(&a, Fp::from(13));
-    builder.set(&c, Fp::from(2));
+    builder.set(a.clone(), 13);
+    builder.set(c.clone(), 2);
 
     builder.fill_nodes();
     builder.assert_equal(c_times_8.clone(), b.clone());
@@ -85,17 +85,17 @@ async fn test_constraints() {
 
 #[tokio::test]
 async fn test_hints() {
-    let mut builder = GraphBuilder::<Fp>::new();
+    let mut builder = Builder::new();
     let a = builder.init();
-    let one = builder.constant(Fp::from(1)); 
-    let eight = builder.constant(Fp::from(8));
+    let one = builder.constant(1); 
+    let eight = builder.constant(8);
 
     let b = builder.add(a.clone(), one); 
 
     let c = builder.hint(&[b.clone()], lambda_div8);
     let c_times_8 = builder.mul(c.clone(), eight.clone());
 
-    builder.set(&a, Fp::from(13));
+    builder.set(a.clone(), 13);
 
     builder.fill_nodes();
     builder.assert_equal(c_times_8.clone(), b.clone());
@@ -109,14 +109,14 @@ async fn test_hints() {
 
 #[tokio::test]
 async fn test_lambda_gates() {
-    let mut builder = GraphBuilder::<Fp>::new();
+    let mut builder = Builder::new();
 
     let a = builder.init();
     let b = builder.init();
 
     let c = builder.mul(a.clone(), b.clone());
 
-    fn lambda_div(params: Vec<Fp>) -> Fp {
+    fn lambda_div(params: Vec<u32>) -> u32 {
         params[0] / params[1]
     }
 
@@ -124,15 +124,69 @@ async fn test_lambda_gates() {
 
     builder.assert_equal(d.clone(), a.clone());
 
-    builder.set(&a, Fp::from(234)); 
-    builder.set(&b, Fp::from(123));
+    builder.set(a.clone(), 234); 
+    builder.set(b.clone(), 123);
 
     builder.fill_nodes();
     let passed_constraints = builder.check_constraints().await; 
 
     assert!(passed_constraints);
-    assert_eq!(a.read().value, 234);
-    assert_eq!(b.read().value, 123);
-    assert_eq!(c.read().value, 28782);
-    assert_eq!(d.read().value, 234);
+    assert_eq!(a.read(), 234);
+    assert_eq!(b.read(), 123);
+    assert_eq!(c.read(), 28782);
+    assert_eq!(d.read(), 234);
+}
+
+#[tokio::test]
+async fn test_large_input_builder() {
+    let n: usize = 20; 
+
+    let num_inputs = 2_usize.pow(n as u32); 
+
+    // 1 million inputs 
+    let start_time = Instant::now();
+    let mut builder = Builder::new();
+
+    let time_to_batch_init = Instant::now();
+    let inputs = builder.batch_init(num_inputs);
+    println!("Time to batch init: {:?}", Instant::now() - time_to_batch_init);
+
+    let time_to_batch_const = Instant::now();
+    let constants = builder.batch_constant(&vec![2; num_inputs]);
+    println!("Time to batch const: {:?}", Instant::now() - time_to_batch_const);
+
+    // to catch the intermediate additions and multplications. 
+    let mut intermediates = Vec::with_capacity(num_inputs/2);
+
+    for i in 0..num_inputs/4 {
+        intermediates.push(builder.add(inputs[2*i].clone(), inputs[2*i + 1].clone())); 
+    }
+
+    for i in 0..num_inputs/4 {
+        intermediates.push(builder.mul(inputs[0].clone(), inputs[i].clone())); 
+    }
+
+    for i in 0..num_inputs/8 {
+        builder.add(intermediates[2*i].clone(), intermediates[2*i + 1].clone()); 
+    }
+    for i in num_inputs/8..num_inputs/4 {
+        builder.mul(intermediates[2*i].clone(), intermediates[2*i + 1].clone()); 
+    }
+
+    for i in 0..num_inputs {
+        builder.mul(constants[i].clone(), inputs[i].clone());
+    }
+   
+    builder.batch_assert_equal(&inputs, &inputs);
+    builder.batch_set(&inputs, &vec![100; num_inputs]);
+
+    let time_to_fill_nodes = Instant::now();
+    builder.fill_nodes();
+    println!("Time to fill nodes: {:?}", Instant::now() - time_to_fill_nodes);
+
+    let check_constraints = builder.check_constraints().await;
+    let end_time = Instant::now();    
+
+    println!("Elapsed time: {:?}", end_time - start_time);
+    println!("Constraints Passed? {:?}", check_constraints);
 }
