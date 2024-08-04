@@ -39,7 +39,6 @@ pub struct AddGate<F: Field> {
     left_input: Rc<RefCell<Node<F>>>,
     right_input: Rc<RefCell<Node<F>>>,
     output: Rc<RefCell<Node<F>>>,
-    depth: u64,
 }
 
 #[derive(Debug)]
@@ -47,7 +46,6 @@ pub struct MultiplyGate<F: Field> {
     left_input: Rc<RefCell<Node<F>>>,
     right_input: Rc<RefCell<Node<F>>>,
     output: Rc<RefCell<Node<F>>>,
-    depth: u64,
 }
 
 impl<F: Field> Default for BuilderSingleThread<F> {
@@ -94,7 +92,6 @@ impl<F: Field> BuilderSingleThread<F> {
             left_input: a.clone(),
             right_input: b.clone(),
             output: output_node.clone(),
-            depth: depth_gate,
         };
 
         if self.gates_per_level.len() > depth_gate as usize {
@@ -120,7 +117,6 @@ impl<F: Field> BuilderSingleThread<F> {
             left_input: a.clone(),
             right_input: b.clone(),
             output: output_node.clone(),
-            depth: depth_gate,
         };
 
         if self.gates_per_level.len() > depth_gate as usize {

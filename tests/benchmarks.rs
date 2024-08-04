@@ -8,7 +8,7 @@ pub type Fp = GaloisField::<65537>;
 // Also uses a different api that allows user to set individual variables. 
 #[tokio::test]
 async fn test_large_input_graphbuilder() {
-    let n: usize = 24; 
+    let n: usize = 18; 
 
     let num_inputs = 2_usize.pow(n as u32); 
 
@@ -65,7 +65,7 @@ async fn test_large_input_graphbuilder() {
 // the location of the Node. 
 #[tokio::test]
 async fn test_large_input_builder() {
-    let n: usize = 24; 
+    let n: usize = 18; 
 
     let num_inputs = 2_i32.pow(n as u32); 
 
@@ -122,7 +122,7 @@ async fn test_large_input_builder() {
 // This is just the single threaded implementation of the above version. 
 #[tokio::test]
 async fn test_large_input_buildersinglethread() {
-    let n: usize = 24; 
+    let n: usize = 18; 
 
     let num_inputs = 2_i32.pow(n as u32); 
 

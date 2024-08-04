@@ -59,7 +59,6 @@ pub struct AddGate<F: Field> {
     left_input: WrappedNode<F>,
     right_input: WrappedNode<F>,
     output: WrappedNode<F>,
-    depth: u64,
 }
 
 // Same structure as above, except it does multiplication instead. 
@@ -68,7 +67,6 @@ pub struct MultiplyGate<F: Field> {
     left_input: WrappedNode<F>,
     right_input: WrappedNode<F>,
     output: WrappedNode<F>,
-    depth: u64,
 }
 
 pub type Lambda<F> = fn(Vec<F>) -> F;
@@ -168,7 +166,6 @@ impl<F: Field> Builder<F> {
             left_input: a.clone(),
             right_input: b.clone(),
             output: output_node.clone(),
-            depth: depth_gate,
         };
 
         if self.gates_per_level.len() > depth_gate as usize {
@@ -182,10 +179,6 @@ impl<F: Field> Builder<F> {
             self.gates_per_level[depth_gate as usize].adder_gates.push(add_gate);
         }
         output_node
-    }
-
-    fn batch_add(&mut self, _left_arguments: &[WrappedNode<F>], _right_arguments: &[WrappedNode<F>]) -> Vec<WrappedNode<F>> {
-        todo!()
     }
 
     // instantiate a multiply gate between two nodes and get an output node
@@ -206,7 +199,6 @@ impl<F: Field> Builder<F> {
             left_input: a.clone(),
             right_input: b.clone(),
             output: output_node.clone(),
-            depth: depth_gate,
         };
 
         if self.gates_per_level.len() > depth_gate as usize {
@@ -220,10 +212,6 @@ impl<F: Field> Builder<F> {
             self.gates_per_level[depth_gate as usize].multiplier_gates.push(multiply_gate);
         }
         output_node
-    }
-
-    fn batch_multiply(&mut self, _left_arguments: &[WrappedNode<F>], _right_arguments: &[WrappedNode<F>]) -> Vec<WrappedNode<F>> {
-        todo!()
     }
 
     /*

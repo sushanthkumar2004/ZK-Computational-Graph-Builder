@@ -77,7 +77,7 @@ pub fn extended_euclidean(a: i128, b: i128) -> [i128; 3] {
 }
 
 // assumes that a < modulus, and computes 1/a. 
-// throws division by zero error is a % modulus == 0
+// throws division by zero error if a % modulus == 0
 pub fn reciprocal(a: u64, modulus: u64) -> u64 {
     if a % modulus == 0 {
         panic!("Attempted division by zero in field with {:?} modulo {:?}", a, modulus);

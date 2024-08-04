@@ -76,7 +76,6 @@ pub struct AddGate {
     left_id: usize,
     right_id: usize,
     output_id: usize,
-    depth: u64,
 }
 
 #[derive(Debug)]
@@ -84,7 +83,6 @@ pub struct MultiplyGate {
     left_id: usize,
     right_id: usize,
     output_id: usize,
-    depth: u64,
 }
 
 pub type Lambda<F> = fn(Vec<F>) -> F;
@@ -99,7 +97,6 @@ pub struct LambdaGate<F: Field> {
     input_ids: Vec<usize>,
     output_id: usize,
     lambda: Lambda<F>,
-    depth: u64,
 }
 
 // Note that all operations are done in F
@@ -200,7 +197,6 @@ impl<F: Field> GraphBuilder<F> {
             left_id: a.id,
             right_id: b.id,
             output_id: output_node.id,
-            depth: depth_gate,
         };
 
         self.nodes.push(output_node.clone());
@@ -236,7 +232,6 @@ impl<F: Field> GraphBuilder<F> {
             left_id: a.id,
             right_id: b.id,
             output_id: output_node.id,
-            depth: depth_gate,
         };
 
         self.nodes.push(output_node.clone());
@@ -283,7 +278,6 @@ impl<F: Field> GraphBuilder<F> {
             input_ids: argument_ids,
             output_id: output_node.id,
             lambda,
-            depth: depth_gate,
         };
 
         self.nodes.push(output_node.clone());
