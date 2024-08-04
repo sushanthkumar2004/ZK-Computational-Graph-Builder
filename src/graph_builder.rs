@@ -181,7 +181,7 @@ impl<F: Field> GraphBuilder<F> {
     
     // instantiate an add gate between two nodes and get an output node
     // that represents the addition of the two supplied nodes
-    pub fn add(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
+    pub fn add(&mut self, a: WrappedNode<F>, b: WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.depth;
         let b_depth = b.depth;
 
@@ -216,7 +216,7 @@ impl<F: Field> GraphBuilder<F> {
     
     // instantiate a multiply gate between two nodes and get an output node
     // that represents the addition of the two supplied nodes
-    pub fn mul(&mut self, a: &WrappedNode<F>, b: &WrappedNode<F>) -> WrappedNode<F> {
+    pub fn mul(&mut self, a: WrappedNode<F>, b: WrappedNode<F>) -> WrappedNode<F> {
         let a_depth = a.depth;
         let b_depth = b.depth;
 
@@ -259,7 +259,7 @@ impl<F: Field> GraphBuilder<F> {
      * returns a node corresponding to the output of the lambda gate that is just in time filled once the arguments are computed. 
      */
 
-    pub fn hint(&mut self, arguments: &[&WrappedNode<F>], lambda: Lambda<F>) -> WrappedNode<F> {
+    pub fn hint(&mut self, arguments: &[WrappedNode<F>], lambda: Lambda<F>) -> WrappedNode<F> {
         // read in arguments which should be other nodes in the graph
         let depth_gate = arguments.iter().map(|arg| arg.depth).max().unwrap();
 
@@ -306,7 +306,7 @@ impl<F: Field> GraphBuilder<F> {
      * returns a vector of equality assertions
      */
 
-    pub fn assert_equal(&mut self, left_arg: &WrappedNode<F>, right_arg: &WrappedNode<F>) -> EqualityAssertion {
+    pub fn assert_equal(&mut self, left_arg: WrappedNode<F>, right_arg: WrappedNode<F>) -> EqualityAssertion {
         let assertion = EqualityAssertion {
             left_id: left_arg.id,
             right_id: right_arg.id,

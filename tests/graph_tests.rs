@@ -12,14 +12,12 @@ fn test_basic_function() {
     let mut builder = GraphBuilder::<Fp>::new();
 
     let x = builder.init();
-    let x_squared = builder.mul(&x, &x);
-    
+    let x_squared = builder.mul(x.clone(), x.clone());
     let five = builder.constant(Fp::from(5));
-    let x_squared_plus_5 = builder.add(&x_squared, &five);
-    let y = builder.add(&x_squared_plus_5, &x);
+    let x_squared_plus_5 = builder.add(x_squared.clone(), five.clone());
+    let y = builder.add(x_squared_plus_5.clone(), x.clone());
 
     builder.set(&x, Fp::from(5));
-
     builder.fill_nodes();
 
     assert_eq!(x.read().value, 5);
@@ -38,10 +36,10 @@ fn test_multiple_access() {
     let z = builder.init();
     let w = builder.init(); 
 
-    let x2 = builder.mul(&x, &x);
-    let xy = builder.mul(&x, &y);
-    let xz = builder.mul(&x, &z);
-    let xw = builder.mul(&x, &w);
+    let x2 = builder.mul(x.clone(), x.clone());
+    let xy = builder.mul(x.clone(), y.clone());
+    let xz = builder.mul(x.clone(), z.clone());
+    let xw = builder.mul(x.clone(), w.clone());
 
     builder.set(&x, Fp::from(5));
     builder.set(&y, Fp::from(5));
@@ -49,15 +47,15 @@ fn test_multiple_access() {
     builder.set(&w, Fp::from(6));
 
     builder.fill_nodes();
-    assert_eq!(x.read().value, 5);
-    assert_eq!(y.read().value, 5);
-    assert_eq!(z.read().value, 45);
-    assert_eq!(w.read().value, 6);
+    assert_eq!(x.read(), Fp::from(5));
+    assert_eq!(y.read(), Fp::from(5));
+    assert_eq!(z.read(), Fp::from(45));
+    assert_eq!(w.read(), Fp::from(6));
 
-    assert_eq!(x2.read().value, 25);
-    assert_eq!(xy.read().value, 25);
-    assert_eq!(xz.read().value, 225);
-    assert_eq!(xw.read().value, 30);
+    assert_eq!(x2.read(), Fp::from(25));
+    assert_eq!(xy.read(), Fp::from(25));
+    assert_eq!(xz.read(), Fp::from(225));
+    assert_eq!(xw.read(), Fp::from(30));
 }
 
 #[tokio::test]
@@ -67,16 +65,16 @@ async fn test_constraints() {
     let one = builder.constant(Fp::from(1)); 
     let eight = builder.constant(Fp::from(8));
 
-    let b = builder.add(&a, &one); 
+    let b = builder.add(a.clone(), one); 
 
     let c = builder.init();
-    let c_times_8 = builder.mul(&c, &eight);
+    let c_times_8 = builder.mul(c.clone(), eight.clone());
 
     builder.set(&a, Fp::from(13));
     builder.set(&c, Fp::from(2));
 
     builder.fill_nodes();
-    builder.assert_equal(&c_times_8, &b);
+    builder.assert_equal(c_times_8.clone(), b.clone());
 
     let constraint_check = builder.check_constraints().await; 
 
@@ -92,15 +90,15 @@ async fn test_hints() {
     let one = builder.constant(Fp::from(1)); 
     let eight = builder.constant(Fp::from(8));
 
-    let b = builder.add(&a, &one); 
+    let b = builder.add(a.clone(), one); 
 
-    let c = builder.hint(&[&b], lambda_div8);
-    let c_times_8 = builder.mul(&c, &eight);
+    let c = builder.hint(&[b.clone()], lambda_div8);
+    let c_times_8 = builder.mul(c.clone(), eight.clone());
 
     builder.set(&a, Fp::from(13));
 
     builder.fill_nodes();
-    builder.assert_equal(&c_times_8, &b);
+    builder.assert_equal(c_times_8.clone(), b.clone());
 
     let constraint_check = builder.check_constraints().await; 
 
@@ -116,15 +114,15 @@ async fn test_lambda_gates() {
     let a = builder.init();
     let b = builder.init();
 
-    let c = builder.mul(&a, &b);
+    let c = builder.mul(a.clone(), b.clone());
 
     fn lambda_div(params: Vec<Fp>) -> Fp {
         params[0] / params[1]
     }
 
-    let d = builder.hint(&[&c, &b], lambda_div);
+    let d = builder.hint(&[c.clone(), b.clone()], lambda_div);
 
-    builder.assert_equal(&d, &a);
+    builder.assert_equal(d.clone(), a.clone());
 
     builder.set(&a, Fp::from(234)); 
     builder.set(&b, Fp::from(123));
