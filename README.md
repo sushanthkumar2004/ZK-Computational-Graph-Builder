@@ -96,9 +96,40 @@ async fn main() {
 ```
 
 ## Debugging
+The ```check_constraints``` function evaluates constraints in the order that they are specified, and execution halts at the first failed constraint. When the constraint fails, debug information is printed out to the logs. This includes information for the two nodes that failed the equality constraint and the nodes directly influencing the value of the left and right nodes. 
+```rust
+async fn main() {
+    let mut builder = Builder::new();
+    let a = builder.init();
+    let one = builder.constant(1); 
+    let eight = builder.constant(8);
 
-TODO! 
+    let b = builder.add(a.clone(), one); 
 
+    let c = builder.init();
+    let c_times_8 = builder.mul(c.clone(), eight.clone());
+
+    builder.set(a.clone(), 13);
+    builder.set(c.clone(), 2);
+
+    builder.fill_nodes();
+    builder.assert_equal(c_times_8.clone(), b.clone());
+
+    builder.check_constraints().await
+}
+```
+THe debug information reveals the method used to evaluate the left and right nodes as well. 
+```
+[2024-08-05T10:54:12Z DEBUG takehome::builder] Equality failed at nodes with id's 5, 3
+[2024-08-05T10:54:12Z DEBUG takehome::builder] Node 5 contains Node { value: 16, depth: 1, id: 5, parents: [4, 2], derivation: Multiplication Gate }
+[2024-08-05T10:54:12Z DEBUG takehome::builder] Node 5 is directly affected by the following nodes:
+[2024-08-05T10:54:12Z DEBUG takehome::builder]     Node 4: Node { value: 2, depth: 0, id: 4, parents: [], derivation: Input }
+[2024-08-05T10:54:12Z DEBUG takehome::builder]     Node 2: Node { value: 8, depth: 0, id: 2, parents: [], derivation: Constant }
+[2024-08-05T10:54:12Z DEBUG takehome::builder] Node 3 contains Node { value: 14, depth: 1, id: 3, parents: [0, 1], derivation: Addition Gate }
+[2024-08-05T10:54:12Z DEBUG takehome::builder] Node 3 is directly affected by the following nodes:
+[2024-08-05T10:54:12Z DEBUG takehome::builder]     Node 0: Node { value: 13, depth: 0, id: 0, parents: [], derivation: Input }
+[2024-08-05T10:54:12Z DEBUG takehome::builder]     Node 1: Node { value: 1, depth: 0, id: 1, parents: [], derivation: Constant }
+```
 ## Algorithms and Concurrency Approach 
 The order of execution is done in such a way to support parallelism. We declare all ```input``` and ```constant``` nodes to have depth $0$. Note that all other non-input and non-constant nodes must be the output of some gate. Suppose $r_1, r_2$ are inputs to gate $G$ with output $s$. Then, we declare
 $$\text{depth}(s)  = 1 + \text{max}(\text{depth}(r_1), \text{depth}(r_2)).$$
