@@ -7,6 +7,10 @@ fn lambda_div8(val: Vec<u32>) -> u32 {
     val[0] / 8
 }
 
+fn lambda_sqrt(val: Vec<u32>) -> u32 {
+    ((val[0] as f64).sqrt().round()) as u32
+}
+
 #[test]
 fn test_basic_function() {
     let mut builder = Builder::new();
@@ -60,6 +64,8 @@ fn test_multiple_access() {
 
 #[tokio::test]
 async fn test_constraints() {
+    env_logger::init();
+
     let mut builder = Builder::new();
     let a = builder.init();
     let one = builder.constant(1); 
@@ -76,11 +82,11 @@ async fn test_constraints() {
     builder.fill_nodes();
     builder.assert_equal(c_times_8.clone(), b.clone());
 
-    let constraint_check = builder.check_constraints().await; 
+    let constraints_check = builder.check_constraints().await;
 
-    println!("{:?}", constraint_check); 
-    println!("{:?}", c_times_8);
-    println!("{:?}", b);
+    assert_eq!(constraints_check, false);
+    assert_eq!(c_times_8.read(), 16);
+    assert_eq!(b.read(), 14);
 }
 
 #[tokio::test]
@@ -95,16 +101,42 @@ async fn test_hints() {
     let c = builder.hint(&[b.clone()], lambda_div8);
     let c_times_8 = builder.mul(c.clone(), eight.clone());
 
-    builder.set(a.clone(), 13);
-
+    builder.set(a.clone(), 15);
     builder.fill_nodes();
     builder.assert_equal(c_times_8.clone(), b.clone());
 
-    let constraint_check = builder.check_constraints().await; 
+    assert_eq!(builder.check_constraints().await, true);
+    assert_eq!(c_times_8.read(), 16);
+    assert_eq!(b.read(), 16);
+}
 
-    println!("{:?}", constraint_check); 
-    println!("{:?}", c_times_8);
-    println!("{:?}", b);
+#[tokio::test]
+async fn test_sqrt_hints() {
+    // Example 3: f(x) = sqrt(x+7)
+    //
+    // Assume that x+7 is a perfect square (so x = 2 or 9, etc.).
+
+    let mut builder = Builder::new();
+    let x = builder.init();
+    let seven = builder.constant(7);
+    let x_plus_seven = builder.add(x.clone(), seven.clone());
+
+    // API for hint where it can depend
+    // on the computed value of x+7 and a user can specify
+    // that the value should be the sqrt.
+    let sqrt_x_plus_7 = builder.hint(&[x_plus_seven.clone()], lambda_sqrt);
+    let computed_sq = builder.mul(sqrt_x_plus_7.clone(), sqrt_x_plus_7.clone());
+
+    builder.assert_equal(computed_sq.clone(), x_plus_seven.clone());
+    builder.set(x.clone(), 2);
+    builder.fill_nodes();
+
+    assert_eq!(x.read(), 2);
+    assert_eq!(seven.read(), 7);
+    assert_eq!(sqrt_x_plus_7.read(), 3);
+    assert_eq!(computed_sq.read(), 9);
+    assert_eq!(x_plus_seven.read(), 9);
+    assert_eq!(builder.check_constraints().await, true);
 }
 
 #[tokio::test]
