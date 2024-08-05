@@ -42,11 +42,11 @@ fn test_basic_function() {
     // fill out the graph based on the input nodes 
     builder.fill_nodes();
 
-    assert_eq!(x.read(), 5);
-    assert_eq!(x_squared.read(), 25);
-    assert_eq!(five.read(), 5);
-    assert_eq!(x_squared_plus_5.read(), 30);
-    assert_eq!(y.read(), 35);
+    assert_eq!(x.get(), 5);
+    assert_eq!(x_squared.get(), 25);
+    assert_eq!(five.get(), 5);
+    assert_eq!(x_squared_plus_5.get(), 30);
+    assert_eq!(y.get(), 35);
 }
 
 #[test]
@@ -69,15 +69,15 @@ fn test_multiple_access() {
     builder.set(w.clone(), 6);
 
     builder.fill_nodes();
-    assert_eq!(x.read(), 5);
-    assert_eq!(y.read(), 5);
-    assert_eq!(z.read(), 45);
-    assert_eq!(w.read(), 6);
+    assert_eq!(x.get(), 5);
+    assert_eq!(y.get(), 5);
+    assert_eq!(z.get(), 45);
+    assert_eq!(w.get(), 6);
 
-    assert_eq!(x2.read(), 25);
-    assert_eq!(xy.read(), 25);
-    assert_eq!(xz.read(), 225);
-    assert_eq!(xw.read(), 30);
+    assert_eq!(x2.get(), 25);
+    assert_eq!(xy.get(), 25);
+    assert_eq!(xz.get(), 225);
+    assert_eq!(xw.get(), 30);
 }
 
 #[tokio::test]
@@ -101,12 +101,12 @@ async fn test_constraints() {
     let constraints_check = builder.check_constraints().await;
 
     assert!(!constraints_check);
-    assert_eq!(a.read(), 13);
-    assert_eq!(one.read(), 1);
-    assert_eq!(eight.read(), 8);
-    assert_eq!(b.read(), 14);
-    assert_eq!(c.read(), 2);
-    assert_eq!(c_times_8.read(), 16);
+    assert_eq!(a.get(), 13);
+    assert_eq!(one.get(), 1);
+    assert_eq!(eight.get(), 8);
+    assert_eq!(b.get(), 14);
+    assert_eq!(c.get(), 2);
+    assert_eq!(c_times_8.get(), 16);
 }
 
 #[tokio::test]
@@ -133,12 +133,12 @@ async fn test_hints() {
     let constraints_check = builder.check_constraints().await;
 
     assert!(constraints_check);
-    assert_eq!(a.read(), 15);
-    assert_eq!(one.read(), 1);
-    assert_eq!(eight.read(), 8);
-    assert_eq!(b.read(), 16);
-    assert_eq!(c.read(), 2);
-    assert_eq!(c_times_8.read(), 16);
+    assert_eq!(a.get(), 15);
+    assert_eq!(one.get(), 1);
+    assert_eq!(eight.get(), 8);
+    assert_eq!(b.get(), 16);
+    assert_eq!(c.get(), 2);
+    assert_eq!(c_times_8.get(), 16);
 }
 
 #[tokio::test]
@@ -174,11 +174,11 @@ async fn test_sqrt_hints() {
     builder.set(x.clone(), 2);
     builder.fill_nodes();
 
-    assert_eq!(x.read(), 2);
-    assert_eq!(seven.read(), 7);
-    assert_eq!(sqrt_x_plus_7.read(), 3);
-    assert_eq!(computed_sq.read(), 9);
-    assert_eq!(x_plus_seven.read(), 9);
+    assert_eq!(x.get(), 2);
+    assert_eq!(seven.get(), 7);
+    assert_eq!(sqrt_x_plus_7.get(), 3);
+    assert_eq!(computed_sq.get(), 9);
+    assert_eq!(x_plus_seven.get(), 9);
     assert!(builder.check_constraints().await);
 }
 
@@ -206,10 +206,10 @@ async fn test_lambda_gates() {
     let passed_constraints = builder.check_constraints().await; 
 
     assert!(passed_constraints);
-    assert_eq!(a.read(), 234);
-    assert_eq!(b.read(), 123);
-    assert_eq!(c.read(), 28782);
-    assert_eq!(d.read(), 234);
+    assert_eq!(a.get(), 234);
+    assert_eq!(b.get(), 123);
+    assert_eq!(c.get(), 28782);
+    assert_eq!(d.get(), 234);
 }
 
 #[tokio::test]

@@ -23,7 +23,7 @@ fn test_multiplication_gate() {
 
         builder.fill_nodes();
 
-        assert_eq!(z.read(), (x_val as u32 * y_val as u32)); 
+        assert_eq!(z.get(), (x_val as u32 * y_val as u32)); 
     }    
 }
 
@@ -48,7 +48,7 @@ fn test_addition_gate() {
 
         builder.fill_nodes();
 
-        assert_eq!(z.read(), (x_val as u32 + y_val as u32)); 
+        assert_eq!(z.get(), (x_val as u32 + y_val as u32)); 
     }    
 }
 
@@ -59,17 +59,29 @@ fn test_builder_set() {
     let x = builder.init();
     let y = builder.constant(10);
 
-    let z = builder.add(x.clone(), y.clone());
+    let _ = builder.add(x.clone(), y.clone());
 
-    // should fail since z is a derived node 
-    builder.set(z.clone(), 1); 
-    assert!(z.value.read().is_none());
-
-    // should fail since y is constant node 
+    // should fail safely since y is constant node 
     builder.set(y.clone(), 2); 
-    assert_eq!(y.read(), 10); 
+    assert_eq!(y.get(), 10); 
 
     // should succeed since x is input node 
     builder.set(x.clone(), 3); 
-    assert_eq!(x.read(), 3); 
+    assert_eq!(x.get(), 3); 
+}
+
+#[test]
+#[should_panic]
+fn test_builder_invalid_set() {
+    let mut builder = Builder::new();
+
+    let x = builder.init();
+    let y = builder.constant(10);
+
+    let z = builder.add(x.clone(), y.clone());
+
+    // trying to set an internal node and accessing it should error
+    // since the value has not been computed yet
+    builder.set(z.clone(), 20); 
+    z.get();
 }

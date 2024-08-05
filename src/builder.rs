@@ -1,7 +1,6 @@
-use std::{cmp::max, fmt, sync::Arc};
-use parking_lot::RwLock;
+use std::{cmp::max, fmt, sync::{Arc, RwLock}};
 use rayon::prelude::*;
-use log::{debug, warn};
+use log::debug;
 
 // Node is required to be wrapped in Arc for multiple thread access,
 // and to support user having pointers to node objects in circuit 
@@ -77,7 +76,7 @@ impl RawNode {
             value: value to set the node to 
      */
     fn set(&self, value: Option<u32>) {
-        *self.value.write() = value; 
+        *self.value.write().unwrap() = value; 
     }
 
     /*
@@ -86,19 +85,19 @@ impl RawNode {
         RETURNS: 
             The value located at the AtomicPtr value field in RawNode
      */
-    pub fn read(&self) -> u32 {
-        self.value.read().unwrap_or_else(|| panic!("Value unfilled at node with id {:?}", self.id))
+    pub fn get(&self) -> u32 {
+        self.value.read().unwrap().unwrap_or_else(|| panic!("Value unfilled at node with id {:?}", self.id))
     }
 }
 
 impl fmt::Display for RawNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.derivation {
-            Derivation::Const => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Constant }}", self.read(), self.depth, self.id, self.parents),
-            Derivation::Input => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Input }}", self.read(), self.depth, self.id, self.parents),
-            Derivation::Add => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Addition Gate }}", self.read(), self.depth, self.id, self.parents),
-            Derivation::Mul => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Multiplication Gate }}", self.read(), self.depth, self.id, self.parents),
-            Derivation::Hint => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Hint }}", self.read(), self.depth, self.id, self.parents),
+            Derivation::Const => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Constant }}", self.get(), self.depth, self.id, self.parents),
+            Derivation::Input => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Input }}", self.get(), self.depth, self.id, self.parents),
+            Derivation::Add => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Addition Gate }}", self.get(), self.depth, self.id, self.parents),
+            Derivation::Mul => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Multiplication Gate }}", self.get(), self.depth, self.id, self.parents),
+            Derivation::Hint => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Hint }}", self.get(), self.depth, self.id, self.parents),
         }
     }
 }
@@ -207,7 +206,7 @@ impl Builder {
         if node.depth == 0 && node.derivation != Derivation::Const {
             node.set(Some(value));
         } else {
-            warn!("Cannot set value of non-input node {} as it is derived.", node)
+            debug!("Cannot set value of non-input node {} as it is derived.", node)
         }
     }
 
@@ -226,7 +225,7 @@ impl Builder {
             if node.depth == 0 && node.derivation != Derivation::Const {
                 node.set(Some(values[i]));
             } else {
-                warn!("Cannot set value of non-input node {:?} as it is derived.", node)
+                debug!("Cannot set value of non-input node {:?} as it is derived.", node)
             }
         });        
     }
@@ -466,19 +465,19 @@ impl Builder {
 
             // iterate over all the gates, read the inputs and drive the outputs accordingly. 
             add_gates.par_iter().for_each(|gate| {
-                let left_value = self.nodes[gate.left_id].read();
-                let right_value = self.nodes[gate.right_id].read();
+                let left_value = self.nodes[gate.left_id].get();
+                let right_value = self.nodes[gate.right_id].get();
                 self.nodes[gate.output_id].set(Some(left_value + right_value));
             });
 
             multiply_gates.par_iter().for_each(|gate| {
-                let left_value = self.nodes[gate.left_id].read();
-                let right_value = self.nodes[gate.right_id].read();
+                let left_value = self.nodes[gate.left_id].get();
+                let right_value = self.nodes[gate.right_id].get();
                 self.nodes[gate.output_id].set(Some(left_value * right_value));
             });
             
             lambda_gates.par_iter().for_each(|gate| {
-                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].read()).collect();
+                let arguments: Vec<_> = gate.input_ids.iter().map(|&i| self.nodes[i].get()).collect();
                 self.nodes[gate.output_id].set(Some((gate.lambda)(arguments)));
             });
 
@@ -494,11 +493,11 @@ impl Builder {
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
             let future_left_value = async {
-                self.nodes[assertion.left_id].read()
+                self.nodes[assertion.left_id].get()
             }.await;
 
             let future_right_value = async {
-                self.nodes[assertion.right_id].read()
+                self.nodes[assertion.right_id].get()
             }.await;
             
             if future_left_value != future_right_value {
