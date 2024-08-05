@@ -75,7 +75,7 @@ impl RawNode {
         ARGS:
             value: value to set the node to 
      */
-    pub fn set(&self, value: Option<u32>) {
+    fn set(&self, value: Option<u32>) {
         let value_ptr = self.value.load(Ordering::Acquire);
         if !value_ptr.is_null() {
             unsafe {
@@ -85,10 +85,6 @@ impl RawNode {
         }
     }
 
-    // unsafe function that returns self.value as a field element.
-    // Note that Rust cannot gaurantee the .as_ref() operation is safe,
-    // but I can ensure that this will not lead to undefined behavior. 
-    // Also, there seems to be no other way to even access the value. 
     /*
         Reads the value of a node
 
@@ -205,11 +201,15 @@ impl Builder {
         vector_input
     }
 
-    // slightly different API. Allows the user to set any node in the graph. 
-    // NOTE: builder.set() allows the user to set ANY node in the graph including those
-    // that are driven by outputs in gates. Calling builder.fill_nodes() will
-    // safely override the nodes that it needs, but the asynchronous function builder.check_constraints()
-    // may fail if the value is overriden by the user. 
+    /*
+        Sets the value of a node in the graph. Does not allow setting the value 
+        of a node that is driven by other nodes (as the output of a hint, or an
+        arithmetic gate).
+
+        ARGS:
+            node: the node to change the value of
+            value: the new value node should hold  
+     */
     pub fn set(&mut self, node: Node, value: u32) {
         if node.depth == 0 {
             node.set(Some(value));
@@ -218,8 +218,17 @@ impl Builder {
         }
     }
 
-    // Allows you to set a vector of inputs 
+    /*
+        Sets the value of a a vector of nodes in the graph. Does not allow 
+        setting the value of a node that is driven by other nodes 
+        (as the output of a hint, or an arithmetic gate).
+
+        ARGS:
+            nodes: the vector of nodes to change the value of
+            values: the new values node should hold  
+     */
     pub fn batch_set(&mut self, nodes: &[Node], values: &[u32]) {
+        assert_eq!(nodes.len(), values.len());
         nodes.par_iter().enumerate().for_each(|(i, node)| {
             if node.depth == 0 {
                 node.set(Some(values[i]));
@@ -251,7 +260,15 @@ impl Builder {
         node
     }
 
-    // declare a batch of constants given a vector of values
+    /*
+        Initializes a vector of constant nodes
+
+        ARGS:
+            values: the constant values that the new nodes should hold
+
+        RETURNS:
+            A vector of constant nodes 
+     */
     pub fn batch_constant(&mut self, values: &[u32]) -> Vec<Node> {
         let init_count = self.next_id; 
         let vector_constant: Vec<Node> = (0..values.len()).into_par_iter().map(|i| {
@@ -268,7 +285,8 @@ impl Builder {
     }
     
     /*
-        Initializes a new node
+        Initializes a new node that is the output of an addition gate
+        taking in two already existing nodes in the graph. 
 
         ARGS:
             a: the first input to the addition gate
@@ -313,7 +331,8 @@ impl Builder {
     }
     
     /*
-        Initializes a new node
+        Initializes a new node that is the output of a multiplication gate
+        taking in two already existing nodes in the graph. 
 
         ARGS:
             a: the first input to the multiplication gate
