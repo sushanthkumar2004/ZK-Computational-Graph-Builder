@@ -1,4 +1,5 @@
-use std::{cmp::max, fmt, sync::{atomic::{AtomicPtr, Ordering}, Arc}};
+use std::{cmp::max, fmt, sync::Arc};
+use parking_lot::RwLock;
 use rayon::prelude::*;
 use log::{debug, warn};
 
@@ -43,7 +44,7 @@ pub struct Builder {
 
 // Used to track how each value in a node was computed, and mainly
 // for user to debug constraint failures in circuit. 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Derivation {
     Const,
     Input,
@@ -61,7 +62,7 @@ pub enum Derivation {
 // derivation: the method used to derive this nodes value 
 #[derive(Debug)]
 pub struct RawNode {
-    pub value: AtomicPtr<Option<u32>>,
+    pub value: RwLock<Option<u32>>,
     pub depth: u64,
     pub id: usize,
     pub parents: Vec<usize>, 
@@ -76,13 +77,7 @@ impl RawNode {
             value: value to set the node to 
      */
     fn set(&self, value: Option<u32>) {
-        let value_ptr = self.value.load(Ordering::Acquire);
-        if !value_ptr.is_null() {
-            unsafe {
-                let val = &mut *value_ptr;
-                *val = value;
-            }
-        }
+        *self.value.write() = value; 
     }
 
     /*
@@ -92,9 +87,7 @@ impl RawNode {
             The value located at the AtomicPtr value field in RawNode
      */
     pub fn read(&self) -> u32 {
-        unsafe { 
-            self.value.load(Ordering::Relaxed).as_ref().unwrap_or_else(|| panic!("Raw dereference failed!")).unwrap_or_else(|| panic!("Value unfilled at id {}!", self.id)) 
-        }
+        self.value.read().unwrap_or_else(|| panic!("Value unfilled at node with id {:?}", self.id))
     }
 }
 
@@ -165,7 +158,7 @@ impl Builder {
      */
     pub fn init(&mut self) -> Node {
         let node = Arc::new(RawNode {
-            value: AtomicPtr::new(Box::into_raw(Box::new(None))),
+            value: RwLock::new(None),
             depth: 0,
             id: self.next_id,
             parents: Vec::new(),
@@ -190,7 +183,7 @@ impl Builder {
         let init_count = self.next_id; 
         let vector_input: Vec<Node> = (0..num_inputs).into_par_iter().map(|i| {
             Arc::new(RawNode {
-                value: AtomicPtr::new(Box::into_raw(Box::new(None))),
+                value: RwLock::new(None),
                 depth: 0,
                 id: init_count + i,
                 parents: Vec::new(),
@@ -211,10 +204,10 @@ impl Builder {
             value: the new value node should hold  
      */
     pub fn set(&mut self, node: Node, value: u32) {
-        if node.depth == 0 {
+        if node.depth == 0 && node.derivation != Derivation::Const {
             node.set(Some(value));
         } else {
-            warn!("Cannot set value of non-input node {:?} as it is derived.", node)
+            warn!("Cannot set value of non-input node {} as it is derived.", node)
         }
     }
 
@@ -230,7 +223,7 @@ impl Builder {
     pub fn batch_set(&mut self, nodes: &[Node], values: &[u32]) {
         assert_eq!(nodes.len(), values.len());
         nodes.par_iter().enumerate().for_each(|(i, node)| {
-            if node.depth == 0 {
+            if node.depth == 0 && node.derivation != Derivation::Const {
                 node.set(Some(values[i]));
             } else {
                 warn!("Cannot set value of non-input node {:?} as it is derived.", node)
@@ -249,7 +242,7 @@ impl Builder {
      */
     pub fn constant(&mut self, value: u32) -> Node {
         let node = Arc::new(RawNode {
-            value: AtomicPtr::new(Box::into_raw(Box::new(Some(value)))),
+            value: RwLock::new(Some(value)),
             depth: 0,
             id: self.next_id,
             parents: Vec::new(),
@@ -273,7 +266,7 @@ impl Builder {
         let init_count = self.next_id; 
         let vector_constant: Vec<Node> = (0..values.len()).into_par_iter().map(|i| {
             Arc::new(RawNode {
-                value: AtomicPtr::new(Box::into_raw(Box::new(Some(values[i])))),
+                value: RwLock::new(Some(values[i])),
                 depth: 0,
                 id: init_count + i,
                 parents: Vec::new(),
@@ -302,7 +295,7 @@ impl Builder {
         let depth_gate = max(a_depth, b_depth);
 
         let output_node = Arc::new(RawNode {
-            value: AtomicPtr::new(Box::into_raw(Box::new(None))),
+            value: RwLock::new(None),
             depth: depth_gate + 1,
             id: self.next_id,
             parents: vec![a.id, b.id],
@@ -348,7 +341,7 @@ impl Builder {
         let depth_gate = max(a_depth, b_depth);
 
         let output_node = Arc::new(RawNode {
-            value: AtomicPtr::new(Box::into_raw(Box::new(None))),
+            value: RwLock::new(None),
             depth: depth_gate + 1,
             id: self.next_id,
             parents: vec![a.id, b.id],
@@ -392,7 +385,7 @@ impl Builder {
 
         // create an output node to store the value in
         let output_node = Arc::new(RawNode {
-            value: AtomicPtr::new(Box::into_raw(Box::new(None))),
+            value: RwLock::new(None),
             depth: depth_gate + 1,
             id: self.next_id,
             parents: arguments.iter().map(|arg| arg.id).collect(),

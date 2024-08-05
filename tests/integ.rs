@@ -3,17 +3,43 @@ use std::time::Instant;
 
 #[test]
 fn test_basic_function() {
+    // Example 1: f(x) = x^2 + x + 5
+  
+    // instantiates an empty circuit with no nodes
     env_logger::init();
-
     let mut builder = Builder::new();
 
+    // NOTE: nodes here are cloned since Rust consumes
+    // the provided arguments to these functions. 
+
+    // create an input node to the circuit
+    // value of the input node must be specified later
+    // in order for the fill_nodes() method to properly
+    // compute values. 
     let x = builder.init();
+
+    // create a multiplication gate using the mul method
+    // that creates a new node in the circuit containing
+    // the product of the two input nodes (which in this
+    // case is x). 
     let x_squared = builder.mul(x.clone(), x.clone());
+
+    // create a constant value in the circuit that can be
+    // used in later computations 
     let five = builder.constant(5);
+
+    // create two addition gates 
     let x_squared_plus_5 = builder.add(x_squared.clone(), five.clone());
     let y = builder.add(x_squared_plus_5.clone(), x.clone());
 
+    // set the value of the input nodes
+    // Note that if not all input nodes are filled out
+    // the builder will try to fill out nodes whose values
+    // can be derived and fail when it first encounters a node
+    // whose value depends on an unset input. 
     builder.set(x.clone(), 5);
+
+    // fill out the graph based on the input nodes 
     builder.fill_nodes();
 
     assert_eq!(x.read(), 5);
@@ -61,7 +87,7 @@ async fn test_constraints() {
     let one = builder.constant(1); 
     let eight = builder.constant(8);
 
-    let b = builder.add(a.clone(), one); 
+    let b = builder.add(a.clone(), one.clone()); 
 
     let c = builder.init();
     let c_times_8 = builder.mul(c.clone(), eight.clone());
@@ -75,8 +101,12 @@ async fn test_constraints() {
     let constraints_check = builder.check_constraints().await;
 
     assert!(!constraints_check);
-    assert_eq!(c_times_8.read(), 16);
+    assert_eq!(a.read(), 13);
+    assert_eq!(one.read(), 1);
+    assert_eq!(eight.read(), 8);
     assert_eq!(b.read(), 14);
+    assert_eq!(c.read(), 2);
+    assert_eq!(c_times_8.read(), 16);
 }
 
 #[tokio::test]
@@ -86,7 +116,7 @@ async fn test_hints() {
     let one = builder.constant(1); 
     let eight = builder.constant(8);
 
-    let b = builder.add(a.clone(), one); 
+    let b = builder.add(a.clone(), one.clone()); 
 
     fn lambda_div8(val: Vec<u32>) -> u32 {
         assert_eq!(val.len(), 1);
@@ -100,9 +130,15 @@ async fn test_hints() {
     builder.fill_nodes();
     builder.assert_equal(c_times_8.clone(), b.clone());
 
-    assert!(builder.check_constraints().await);
-    assert_eq!(c_times_8.read(), 16);
+    let constraints_check = builder.check_constraints().await;
+
+    assert!(constraints_check);
+    assert_eq!(a.read(), 15);
+    assert_eq!(one.read(), 1);
+    assert_eq!(eight.read(), 8);
     assert_eq!(b.read(), 16);
+    assert_eq!(c.read(), 2);
+    assert_eq!(c_times_8.read(), 16);
 }
 
 #[tokio::test]
@@ -116,13 +152,21 @@ async fn test_sqrt_hints() {
     let seven = builder.constant(7);
     let x_plus_seven = builder.add(x.clone(), seven.clone());
 
+    // Function to use for hint 
     fn lambda_sqrt(val: Vec<u32>) -> u32 {
         ((val[0] as f64).sqrt().round()) as u32
-    }    
+    }
 
-    // API for hint where it can depend
-    // on the computed value of x+7 and a user can specify
-    // that the value should be the sqrt.
+    // API for hints.
+    // The first argument is a slice containing a
+    // vector of nodes to be used as an input
+    // to the second argument, which is a
+    // user-provided vector function.
+    // The general syntax is builder.hint(&[nodes], function)
+
+    // For example, this computes the square root of x+7
+    // by passing in the node x_plus_seven as an argument to
+    // lambda_sqrt. 
     let sqrt_x_plus_7 = builder.hint(&[x_plus_seven.clone()], lambda_sqrt);
     let computed_sq = builder.mul(sqrt_x_plus_7.clone(), sqrt_x_plus_7.clone());
 
