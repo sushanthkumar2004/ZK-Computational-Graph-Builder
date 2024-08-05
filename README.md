@@ -135,7 +135,10 @@ The debug information reveals the method used to evaluate the left and right nod
 To evaluate nodes correctly and concurrently, we use the concept of node depth. All ```input``` and ```constant``` nodes are declared to have depth 0. We calculate the depths of all other nodes as follows. Let node $M$ be a function of nodes $N_1,\ldots, N_n$, and for a node $X$, let $\text{depth}(X)$ denote the depth of node $X$. We set
 $$\text{depth}(M) = 1 + \text{max}_{1\le i\le n} \text{depth}(N_i).$$
 Evaluate nodes at increasing depths, starting from depth 0 and progressing sequentially. The key idea is that nodes at the same depth can be evaluated in parallel, since by the time compute reaches depth $k$, all nodes of previous depths have been fully computed, and there are no dependecies between nodes of the same depth. 
-<img src=./img/spec.jpg alt="Schematic" width="600">
+
+<p align="center">
+  <img src=./img/spec.jpg alt="Schematic" width="600">
+</p>
 #### Additional Considerations
 In general multiplication operations are slower than addition operations, and lambda gates can be arbitrarily simple or arbitrarily complex. Instead of splitting all the gates equally across the threads we should split all the different types of gates equally across the threads (this allows the workload across nodes to be more equal). The struct LevelGates keeps track of the gates at each level and seperates by types to facilitate this. 
 ```rust
