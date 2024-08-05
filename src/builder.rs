@@ -2,9 +2,9 @@ use std::{cmp::max, fmt, sync::{atomic::{AtomicPtr, Ordering}, Arc}};
 use rayon::prelude::*;
 use log::{debug, warn};
 
-// all nodes passed between the graphs need to be wrapped in Arc
-// so that multiple threads can read the same node concurrently. 
-type WrappedNode = Arc<Node>;
+// Node is required to be wrapped in Arc for multiple thread access,
+// and to support user having pointers to node objects in circuit 
+type Node = Arc<RawNode>;
 
 // Keeps track of all gates at the level
 // Note that the gates are seperated by type
@@ -16,31 +16,33 @@ pub struct LevelGates {
     lambda_gates: Vec<LambdaGate>,
 }
 
-// Struct to keep track of an equality assertion between two nodes
-// LEFT_ID stores the index of the left_node and RIGHT_ID stores 
-// the index of the right_node. Asserts right_node == left_node
+// Struct to assert equality between the node with id 
+// left_id and the node with id right_id. 
+
+// id's are assigned to nodes by builder as they are created. 
 #[derive(Debug)]
 pub struct EqualityAssertion {
     left_id: usize,
     right_id: usize,
 }
 
-// builder struct
-// NODES is a vector that keeps track of all the nodes in the graph,
-// GATES is a set of gates aggregated by depth and seperated by type
-// Note: Gates[i] will return a LevelGates structure that stores all the gates
-// in depth level i by their type. 
-// ASSERTIONS stores all the equality assertions that the user makes
-// NEXT_ID is basically used to assign an identifier to each node. 
-// As a node is added to the graph, NEXT_ID is incremented by 1
-#[derive(Debug)]
+// Struct that tracks the overall circuit.
+// nodes: a vector of all the nodes in the circuit 
+// gates: a vector of LevelGates. The ith element contains
+// a LevelGates structure containing all gates present at depth i.
+// assertions: a vector of equality assertions
+// next_id: the next node added to the circuit will have this id. 
+// Every time a new node is added, this value will be incremented. 
+#[derive(Debug, Default)]
 pub struct Builder {
-    nodes: Vec<WrappedNode>, 
+    nodes: Vec<Node>, 
     gates: Vec<LevelGates>,
     assertions: Vec<EqualityAssertion>,
     next_id: usize,
 }
 
+// Used to track how each value in a node was computed, and mainly
+// for user to debug constraint failures in circuit. 
 #[derive(Debug)]
 pub enum Derivation {
     Const,
@@ -50,10 +52,15 @@ pub enum Derivation {
     Hint,
 }
 
-// node struct to store the value and depth of the node
-// ID is just used for debugging purposes. 
+// RawNode struct to track information in Node
+// value: A mutable pointer to the value 
+// (which is Option to handle unfilled values)
+// depth: the depth of the node (i.e. the level it is at)
+// id: the id of the node
+// parents: the id's of the nodes used to derive this nodes value
+// derivation: the method used to derive this nodes value 
 #[derive(Debug)]
-pub struct Node {
+pub struct RawNode {
     pub value: AtomicPtr<Option<u32>>,
     pub depth: u64,
     pub id: usize,
@@ -61,25 +68,42 @@ pub struct Node {
     pub derivation: Derivation
 }
 
-impl Node {
-    // allows the user to essentially reset the value in the box
+impl RawNode {
+    /*
+        Allows value of a raw node to be set
+
+        ARGS:
+            value: value to set the node to 
+     */
     pub fn set(&self, value: Option<u32>) {
-        let value_ptr = Box::into_raw(Box::new(value));
-        self.value.store(value_ptr, Ordering::Relaxed);
+        let value_ptr = self.value.load(Ordering::Acquire);
+        if !value_ptr.is_null() {
+            unsafe {
+                let val = &mut *value_ptr;
+                *val = value;
+            }
+        }
     }
 
     // unsafe function that returns self.value as a field element.
     // Note that Rust cannot gaurantee the .as_ref() operation is safe,
     // but I can ensure that this will not lead to undefined behavior. 
     // Also, there seems to be no other way to even access the value. 
+    /*
+        Reads the value of a node
+
+        RETURNS: 
+            The value located at the AtomicPtr value field in RawNode
+     */
     pub fn read(&self) -> u32 {
-        unsafe { self.value.load(Ordering::Relaxed).as_ref().unwrap_or_else(|| panic!("Raw dereference failed!")).unwrap_or_else(|| panic!("Value unfilled at id {}!", self.id)) }
+        unsafe { 
+            self.value.load(Ordering::Relaxed).as_ref().unwrap_or_else(|| panic!("Raw dereference failed!")).unwrap_or_else(|| panic!("Value unfilled at id {}!", self.id)) 
+        }
     }
 }
 
-impl fmt::Display for Node {
+impl fmt::Display for RawNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Write the desired format using the `write!` macro
         match self.derivation {
             Derivation::Const => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Constant }}", self.read(), self.depth, self.id, self.parents),
             Derivation::Input => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Input }}", self.read(), self.depth, self.id, self.parents),
@@ -87,14 +111,13 @@ impl fmt::Display for Node {
             Derivation::Mul => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Multiplication Gate }}", self.read(), self.depth, self.id, self.parents),
             Derivation::Hint => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Hint }}", self.read(), self.depth, self.id, self.parents),
         }
-        
     }
 }
 
 // AddGate structure, which has two input nodes and one output node. 
-// LEFT_ID is the position of the left node in builder.nodes,
-// and RIGHT_ID is the position of the right node. 
-// DEPTH is defined as in the README. 
+// left_id is the position of the left node in builder.nodes,
+// and right_id is the position of the right node. 
+// output_id is the id of the output node containing the sum. 
 #[derive(Debug)]
 pub struct AddGate {
     left_id: usize,
@@ -102,6 +125,10 @@ pub struct AddGate {
     output_id: usize,
 }
 
+// MultiplyGate structure, which has two input nodes and one output node. 
+// left_id is the position of the left node in builder.nodes,
+// and right_id is the position of the right node. 
+// output_id is the id of the output node containing the product. 
 #[derive(Debug)]
 pub struct MultiplyGate {
     left_id: usize,
@@ -109,13 +136,13 @@ pub struct MultiplyGate {
     output_id: usize,
 }
 
+// Lambda type to use in order to specify a hint 
 pub type Lambda = fn(Vec<u32>) -> u32;
 
 // LambdaGate structure to define arbitary hints based on other node values
-// The function LAMBDA is used to determine the output.
-// INPUT_IDS takes all the id's of the inputs
-// OUTPUT_ID stores the id of the output
-// DEPTH is defined as in README.
+// input_ids: ids of input nodes to use 
+// output_id: id of the output node 
+// lambda: function used to determine the output.
 #[derive(Debug)]
 pub struct LambdaGate {
     input_ids: Vec<usize>,
@@ -123,20 +150,25 @@ pub struct LambdaGate {
     lambda: Lambda,
 }
 
-// Note that all operations are done in F
 impl Builder {
+    /*
+        Creates a new empty circuit
+
+        RETURNS:
+            An empty circuit with no nodes 
+     */
     pub fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-            gates: Vec::new(),
-            assertions: Vec::new(),
-            next_id: 0,
-        }
+        Builder::default()
     }
     
-    // method to initialize a new node. 
-    pub fn init(&mut self) -> WrappedNode {
-        let node = Arc::new(Node {
+    /*
+        Initializes a new node
+
+        RETURNS:
+            An unfilled node object 
+     */
+    pub fn init(&mut self) -> Node {
+        let node = Arc::new(RawNode {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: 0,
             id: self.next_id,
@@ -149,11 +181,19 @@ impl Builder {
 
     }
 
-    // allows one to batch initialize a vector of inputs of size num_inputs using multithreading
-    pub fn batch_init(&mut self, num_inputs: usize) -> Vec<WrappedNode> {
+    /*
+        Initializes a new node
+
+        ARGS:
+            num_inputs: the number of input nodes to initialize 
+
+        RETURNS:
+            A vector of input nodes to use for the circuit  
+     */
+    pub fn batch_init(&mut self, num_inputs: usize) -> Vec<Node> {
         let init_count = self.next_id; 
-        let vector_input: Vec<WrappedNode> = (0..num_inputs).into_par_iter().map(|i| {
-            Arc::new(Node {
+        let vector_input: Vec<Node> = (0..num_inputs).into_par_iter().map(|i| {
+            Arc::new(RawNode {
                 value: AtomicPtr::new(Box::into_raw(Box::new(None))),
                 depth: 0,
                 id: init_count + i,
@@ -170,7 +210,7 @@ impl Builder {
     // that are driven by outputs in gates. Calling builder.fill_nodes() will
     // safely override the nodes that it needs, but the asynchronous function builder.check_constraints()
     // may fail if the value is overriden by the user. 
-    pub fn set(&mut self, node: WrappedNode, value: u32) {
+    pub fn set(&mut self, node: Node, value: u32) {
         if node.depth == 0 {
             node.set(Some(value));
         } else {
@@ -179,7 +219,7 @@ impl Builder {
     }
 
     // Allows you to set a vector of inputs 
-    pub fn batch_set(&mut self, nodes: &[WrappedNode], values: &[u32]) {
+    pub fn batch_set(&mut self, nodes: &[Node], values: &[u32]) {
         nodes.par_iter().enumerate().for_each(|(i, node)| {
             if node.depth == 0 {
                 node.set(Some(values[i]));
@@ -189,9 +229,17 @@ impl Builder {
         });        
     }
     
-    // declare a constant node in the graph 
-    pub fn constant(&mut self, value: u32) -> WrappedNode {
-        let node = Arc::new(Node {
+    /*
+        Initializes a new node holding a constant value
+
+        ARGS:
+            value: set a constant node to this value
+
+        RETURNS:
+            A constant node containing value 
+     */
+    pub fn constant(&mut self, value: u32) -> Node {
+        let node = Arc::new(RawNode {
             value: AtomicPtr::new(Box::into_raw(Box::new(Some(value)))),
             depth: 0,
             id: self.next_id,
@@ -204,10 +252,10 @@ impl Builder {
     }
 
     // declare a batch of constants given a vector of values
-    pub fn batch_constant(&mut self, values: &[u32]) -> Vec<WrappedNode> {
+    pub fn batch_constant(&mut self, values: &[u32]) -> Vec<Node> {
         let init_count = self.next_id; 
-        let vector_constant: Vec<WrappedNode> = (0..values.len()).into_par_iter().map(|i| {
-            Arc::new(Node {
+        let vector_constant: Vec<Node> = (0..values.len()).into_par_iter().map(|i| {
+            Arc::new(RawNode {
                 value: AtomicPtr::new(Box::into_raw(Box::new(Some(values[i])))),
                 depth: 0,
                 id: init_count + i,
@@ -219,15 +267,23 @@ impl Builder {
         vector_constant
     }
     
-    // instantiate an add gate between two nodes and get an output node
-    // that represents the addition of the two supplied nodes
-    pub fn add(&mut self, a: WrappedNode, b: WrappedNode) -> WrappedNode {
+    /*
+        Initializes a new node
+
+        ARGS:
+            a: the first input to the addition gate
+            b: the second input to the addition gate
+
+        RETURNS:
+            A node holding the formal sum of node a and node b  
+     */
+    pub fn add(&mut self, a: Node, b: Node) -> Node {
         let a_depth = a.depth;
         let b_depth = b.depth;
 
         let depth_gate = max(a_depth, b_depth);
 
-        let output_node = Arc::new(Node {
+        let output_node = Arc::new(RawNode {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: depth_gate + 1,
             id: self.next_id,
@@ -256,15 +312,23 @@ impl Builder {
         output_node
     }
     
-    // instantiate a multiply gate between two nodes and get an output node
-    // that represents the addition of the two supplied nodes
-    pub fn mul(&mut self, a: WrappedNode, b: WrappedNode) -> WrappedNode {
+    /*
+        Initializes a new node
+
+        ARGS:
+            a: the first input to the multiplication gate
+            b: the second input to the multiplication gate
+
+        RETURNS:
+            A node holding the formal product of node a and node b  
+     */
+    pub fn mul(&mut self, a: Node, b: Node) -> Node {
         let a_depth = a.depth;
         let b_depth = b.depth;
 
         let depth_gate = max(a_depth, b_depth);
 
-        let output_node = Arc::new(Node {
+        let output_node = Arc::new(RawNode {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: depth_gate + 1,
             id: self.next_id,
@@ -292,23 +356,23 @@ impl Builder {
         self.gates[depth_gate as usize].multiplier_gates.push(multiply_gate);
         output_node
     }
-
+    
     /*
-     * Allows for a hint to be given (useful for operations like division)
-     * 
-     * ARGS: 
-     * arguments: an array of nodes that serve as inputs to the lambda
-     * lambda: a function that relates the values of these nodes to the value of the output (which is returned)
-     * RETURNS:
-     * returns a node corresponding to the output of the lambda gate that is just in time filled once the arguments are computed. 
-     */
+        Allows for a hint to be given (useful for operations like division)
 
-    pub fn hint(&mut self, arguments: &[WrappedNode], lambda: Lambda) -> WrappedNode {
+        ARGS:
+            arguments: an array of nodes that serve as inputs to the lambda
+            lambda: a function that relates the values of these nodes to the value of the output (which is returned)
+
+        RETURNS:
+            Returns a node corresponding to the output of the lambda gate that is just in time filled once the arguments are computed. 
+     */
+    pub fn hint(&mut self, arguments: &[Node], lambda: Lambda) -> Node {
         // read in arguments which should be other nodes in the graph
         let depth_gate = arguments.iter().map(|arg| arg.depth).max().unwrap();
 
         // create an output node to store the value in
-        let output_node = Arc::new(Node {
+        let output_node = Arc::new(RawNode {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: depth_gate + 1,
             id: self.next_id,
@@ -342,17 +406,14 @@ impl Builder {
     }
     
     /*
-     * Allows for a single assertion to be declared
-     * 
-     * ARGS: 
-     * left_arg: the left inputs
-     * right_arg: the right inputs
-     * The assertions will assert that left_args[i] = right_args[i]
-     * RETURNS:
-     * returns a vector of equality assertions
-     */
+        Allows for a single assertion to be declared. Declares
+        left_arg node to equal right_arg node
 
-    pub fn assert_equal(&mut self, left_arg: WrappedNode, right_arg: WrappedNode) {
+        ARGS:
+            left_arg: the left inputs
+            right_arg: the right inputs
+     */
+    pub fn assert_equal(&mut self, left_arg: Node, right_arg: Node) {
         let assertion = EqualityAssertion {
             left_id: left_arg.id,
             right_id: right_arg.id,
@@ -361,17 +422,15 @@ impl Builder {
     }
 
     /*
-     * Allows for a batch of assertions to be declared
-     * 
-     * ARGS: 
-     * left_args: All the left inputs
-     * right_args: all the right inputs
-     * All assertions will be of the form left_args[i] = right_args[i]
-     * RETURNS:
-     * returns a vector of equality assertions
-     */
+        Allows for a batch of assertions to be declared. 
+        Declares left_args[i] node to equal right_args[i] node
+        for all i. 
 
-    pub fn batch_assert_equal(&mut self, left_args: &[WrappedNode], right_args: &[WrappedNode]) {
+        ARGS:
+            left_args: the vector of left inputs
+            right_arg: the vector of right inputs
+     */
+    pub fn batch_assert_equal(&mut self, left_args: &[Node], right_args: &[Node]) {
         assert_eq!(left_args.len(), right_args.len());
 
         let new_assertions: Vec<EqualityAssertion> = (0..right_args.len()).into_par_iter().map(|i| {
@@ -383,13 +442,9 @@ impl Builder {
     }
 
     /*
-     * Multithreaded function to fill in all the nodes of the graph given inputs. Expects that all inputs
-     * have already been set. If it encounters an unfilled node in the graph, it throws an error message. 
-     * 
-     * ARGS: 
-     * none
-     * RETURNS:
-     * none
+        Multithreaded function to fill in all the nodes of the graph given inputs. 
+        Expects that all inputs have already been set. If it encounters an unfilled 
+        node in the graph, it throws an error message. 
      */
     pub fn fill_nodes(&mut self) {   
         for level_gate in &self.gates {
@@ -397,8 +452,7 @@ impl Builder {
             let multiply_gates = &level_gate.multiplier_gates; 
             let lambda_gates = &level_gate.lambda_gates; 
 
-            // parallel iterate over all the gates, read the inputs and drive the outputs accordingly. 
-            // I used unwrap_or_else to handle values that were unfilled. 
+            // iterate over all the gates, read the inputs and drive the outputs accordingly. 
             add_gates.par_iter().for_each(|gate| {
                 let left_value = self.nodes[gate.left_id].read();
                 let right_value = self.nodes[gate.right_id].read();
@@ -420,10 +474,10 @@ impl Builder {
     }
 
     /*
-     * Async function to check that constraints between nodes are satisfied once nodes are filled in.
-     * 
-     * RETURNS:
-     * a boolean representing whether or not all equality constraints passed
+        Async function to check that constraints between nodes are satisfied once nodes are filled in.
+
+        RETURNS:
+            a boolean value representing whether or not all equality constraints passed
      */
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
@@ -441,7 +495,7 @@ impl Builder {
 
                 debug!("Equality failed at nodes with id's {}, {}", left_value.id, right_value.id);
                 debug!("Node {} contains {}", left_value.id, left_value);
-                if left_value.parents.len() != 0 {
+                if !left_value.parents.is_empty() {
                     debug!("Node {} is directly affected by the following nodes:", left_value.id);
                     left_value.parents.iter().for_each(|node_id| 
                         debug!("    Node {}: {}", *node_id, self.nodes[*node_id])
@@ -451,7 +505,7 @@ impl Builder {
                 }
 
                 debug!("Node {} contains {}", right_value.id, right_value);
-                if right_value.parents.len() != 0 {
+                if !right_value.parents.is_empty() {
                     debug!("Node {} is directly affected by the following nodes:", right_value.id);
                     right_value.parents.iter().for_each(|node_id| 
                         debug!("    Node {}: {}", *node_id, self.nodes[*node_id])
@@ -466,4 +520,3 @@ impl Builder {
         true
     }
 }
-

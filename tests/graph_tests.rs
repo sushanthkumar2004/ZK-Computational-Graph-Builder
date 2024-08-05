@@ -1,18 +1,10 @@
 use takehome::builder::*;
 use std::time::Instant;
 
-// equivalent to the lambda x -> x/8 but written as a "vector-function". 
-fn lambda_div8(val: Vec<u32>) -> u32 {
-    assert_eq!(val.len(), 1);
-    val[0] / 8
-}
-
-fn lambda_sqrt(val: Vec<u32>) -> u32 {
-    ((val[0] as f64).sqrt().round()) as u32
-}
-
 #[test]
 fn test_basic_function() {
+    env_logger::init();
+
     let mut builder = Builder::new();
 
     let x = builder.init();
@@ -64,8 +56,6 @@ fn test_multiple_access() {
 
 #[tokio::test]
 async fn test_constraints() {
-    env_logger::init();
-
     let mut builder = Builder::new();
     let a = builder.init();
     let one = builder.constant(1); 
@@ -84,7 +74,7 @@ async fn test_constraints() {
 
     let constraints_check = builder.check_constraints().await;
 
-    assert_eq!(constraints_check, false);
+    assert!(!constraints_check);
     assert_eq!(c_times_8.read(), 16);
     assert_eq!(b.read(), 14);
 }
@@ -98,6 +88,11 @@ async fn test_hints() {
 
     let b = builder.add(a.clone(), one); 
 
+    fn lambda_div8(val: Vec<u32>) -> u32 {
+        assert_eq!(val.len(), 1);
+        val[0] / 8
+    }    
+
     let c = builder.hint(&[b.clone()], lambda_div8);
     let c_times_8 = builder.mul(c.clone(), eight.clone());
 
@@ -105,7 +100,7 @@ async fn test_hints() {
     builder.fill_nodes();
     builder.assert_equal(c_times_8.clone(), b.clone());
 
-    assert_eq!(builder.check_constraints().await, true);
+    assert!(builder.check_constraints().await);
     assert_eq!(c_times_8.read(), 16);
     assert_eq!(b.read(), 16);
 }
@@ -120,6 +115,10 @@ async fn test_sqrt_hints() {
     let x = builder.init();
     let seven = builder.constant(7);
     let x_plus_seven = builder.add(x.clone(), seven.clone());
+
+    fn lambda_sqrt(val: Vec<u32>) -> u32 {
+        ((val[0] as f64).sqrt().round()) as u32
+    }    
 
     // API for hint where it can depend
     // on the computed value of x+7 and a user can specify
@@ -136,11 +135,11 @@ async fn test_sqrt_hints() {
     assert_eq!(sqrt_x_plus_7.read(), 3);
     assert_eq!(computed_sq.read(), 9);
     assert_eq!(x_plus_seven.read(), 9);
-    assert_eq!(builder.check_constraints().await, true);
+    assert!(builder.check_constraints().await);
 }
 
 #[tokio::test]
-async fn test_lambda_gates() {
+async fn test_lambda_gates() {  
     let mut builder = Builder::new();
 
     let a = builder.init();
