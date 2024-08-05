@@ -1,5 +1,6 @@
-use std::{cmp::max, sync::{atomic::{AtomicPtr, Ordering}, Arc}};
+use std::{cmp::max, fmt, sync::{atomic::{AtomicPtr, Ordering}, Arc}};
 use rayon::prelude::*;
+use log::{debug, warn};
 
 // all nodes passed between the graphs need to be wrapped in Arc
 // so that multiple threads can read the same node concurrently. 
@@ -18,7 +19,7 @@ pub struct LevelGates {
 // Struct to keep track of an equality assertion between two nodes
 // LEFT_ID stores the index of the left_node and RIGHT_ID stores 
 // the index of the right_node. Asserts right_node == left_node
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct EqualityAssertion {
     left_id: usize,
     right_id: usize,
@@ -32,7 +33,7 @@ pub struct EqualityAssertion {
 // ASSERTIONS stores all the equality assertions that the user makes
 // NEXT_ID is basically used to assign an identifier to each node. 
 // As a node is added to the graph, NEXT_ID is incremented by 1
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Builder {
     nodes: Vec<WrappedNode>, 
     gates: Vec<LevelGates>,
@@ -40,13 +41,24 @@ pub struct Builder {
     next_id: usize,
 }
 
+#[derive(Debug)]
+pub enum Derivation {
+    Const,
+    Input,
+    Add,
+    Mul,
+    Hint,
+}
+
 // node struct to store the value and depth of the node
 // ID is just used for debugging purposes. 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Node {
     pub value: AtomicPtr<Option<u32>>,
     pub depth: u64,
     pub id: usize,
+    pub parents: Vec<usize>, 
+    pub derivation: Derivation
 }
 
 impl Node {
@@ -62,6 +74,20 @@ impl Node {
     // Also, there seems to be no other way to even access the value. 
     pub fn read(&self) -> u32 {
         unsafe { self.value.load(Ordering::Relaxed).as_ref().unwrap_or_else(|| panic!("Raw dereference failed!")).unwrap_or_else(|| panic!("Value unfilled at id {}!", self.id)) }
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write the desired format using the `write!` macro
+        match self.derivation {
+            Derivation::Const => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Constant }}", self.read(), self.depth, self.id, self.parents),
+            Derivation::Input => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Input }}", self.read(), self.depth, self.id, self.parents),
+            Derivation::Add => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Addition Gate }}", self.read(), self.depth, self.id, self.parents),
+            Derivation::Mul => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Multiplication Gate }}", self.read(), self.depth, self.id, self.parents),
+            Derivation::Hint => write!(f, "Node {{ value: {}, depth: {}, id: {}, parents: {:?}, derivation: Hint }}", self.read(), self.depth, self.id, self.parents),
+        }
+        
     }
 }
 
@@ -114,6 +140,8 @@ impl Builder {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: 0,
             id: self.next_id,
+            parents: Vec::new(),
+            derivation: Derivation::Input,
         });
         self.next_id += 1; 
         self.nodes.push(node.clone());
@@ -129,6 +157,8 @@ impl Builder {
                 value: AtomicPtr::new(Box::into_raw(Box::new(None))),
                 depth: 0,
                 id: init_count + i,
+                parents: Vec::new(),
+                derivation: Derivation::Input,
             })}).collect();
         self.nodes.extend(vector_input.clone());
         self.next_id += num_inputs;
@@ -141,13 +171,21 @@ impl Builder {
     // safely override the nodes that it needs, but the asynchronous function builder.check_constraints()
     // may fail if the value is overriden by the user. 
     pub fn set(&mut self, node: WrappedNode, value: u32) {
-        node.set(Some(value));
+        if node.depth == 0 {
+            node.set(Some(value));
+        } else {
+            warn!("Cannot set value of non-input node {:?} as it is derived.", node)
+        }
     }
 
     // Allows you to set a vector of inputs 
     pub fn batch_set(&mut self, nodes: &[WrappedNode], values: &[u32]) {
         nodes.par_iter().enumerate().for_each(|(i, node)| {
-            node.set(Some(values[i]));
+            if node.depth == 0 {
+                node.set(Some(values[i]));
+            } else {
+                warn!("Cannot set value of non-input node {:?} as it is derived.", node)
+            }
         });        
     }
     
@@ -157,6 +195,8 @@ impl Builder {
             value: AtomicPtr::new(Box::into_raw(Box::new(Some(value)))),
             depth: 0,
             id: self.next_id,
+            parents: Vec::new(),
+            derivation: Derivation::Const,
         });
         self.next_id += 1; 
         self.nodes.push(node.clone());
@@ -171,6 +211,8 @@ impl Builder {
                 value: AtomicPtr::new(Box::into_raw(Box::new(Some(values[i])))),
                 depth: 0,
                 id: init_count + i,
+                parents: Vec::new(),
+                derivation: Derivation::Const,
             })}).collect();
         self.nodes.extend(vector_constant.clone());
         self.next_id += values.len();
@@ -189,6 +231,8 @@ impl Builder {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: depth_gate + 1,
             id: self.next_id,
+            parents: vec![a.id, b.id],
+            derivation: Derivation::Add
         });
         
         let add_gate = AddGate {
@@ -224,6 +268,8 @@ impl Builder {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: depth_gate + 1,
             id: self.next_id,
+            parents: vec![a.id, b.id],
+            derivation: Derivation::Mul
         });
 
         let multiply_gate = MultiplyGate {
@@ -266,6 +312,8 @@ impl Builder {
             value: AtomicPtr::new(Box::into_raw(Box::new(None))),
             depth: depth_gate + 1,
             id: self.next_id,
+            parents: arguments.iter().map(|arg| arg.id).collect(),
+            derivation: Derivation::Hint
         });
         
         // get the positions of the nodes in the vector self.nodes, 
@@ -304,13 +352,12 @@ impl Builder {
      * returns a vector of equality assertions
      */
 
-    pub fn assert_equal(&mut self, left_arg: WrappedNode, right_arg: WrappedNode) -> EqualityAssertion {
+    pub fn assert_equal(&mut self, left_arg: WrappedNode, right_arg: WrappedNode) {
         let assertion = EqualityAssertion {
             left_id: left_arg.id,
             right_id: right_arg.id,
         };
-        self.assertions.push(assertion.clone());
-        assertion
+        self.assertions.push(assertion);
     }
 
     /*
@@ -324,7 +371,7 @@ impl Builder {
      * returns a vector of equality assertions
      */
 
-    pub fn batch_assert_equal(&mut self, left_args: &[WrappedNode], right_args: &[WrappedNode]) -> Vec<EqualityAssertion> {
+    pub fn batch_assert_equal(&mut self, left_args: &[WrappedNode], right_args: &[WrappedNode]) {
         assert_eq!(left_args.len(), right_args.len());
 
         let new_assertions: Vec<EqualityAssertion> = (0..right_args.len()).into_par_iter().map(|i| {
@@ -332,8 +379,7 @@ impl Builder {
                 left_id: left_args[i].id,
                 right_id: right_args[i].id,
             }}).collect();
-        self.assertions.extend(new_assertions.clone());
-        new_assertions
+        self.assertions.extend(new_assertions);
     }
 
     /*
@@ -382,7 +428,7 @@ impl Builder {
     pub async fn check_constraints(&mut self) -> bool {
         for assertion in &self.assertions {
             let future_left_value = async {
-                self.nodes[assertion.left_id].read() 
+                self.nodes[assertion.left_id].read()
             }.await;
 
             let future_right_value = async {
@@ -393,7 +439,27 @@ impl Builder {
                 let left_value = self.nodes[assertion.left_id].clone();
                 let right_value = self.nodes[assertion.right_id].clone();
 
-                eprintln!("Equality failed at following nodes: {:?}, {:?}", left_value, right_value);
+                debug!("Equality failed at nodes with id's {}, {}", left_value.id, right_value.id);
+                debug!("Node {} contains {}", left_value.id, left_value);
+                if left_value.parents.len() != 0 {
+                    debug!("Node {} is directly affected by the following nodes:", left_value.id);
+                    left_value.parents.iter().for_each(|node_id| 
+                        debug!("    Node {}: {}", *node_id, self.nodes[*node_id])
+                    );
+                } else {
+                    debug!("Node {} is an input node.", left_value.id);
+                }
+
+                debug!("Node {} contains {}", right_value.id, right_value);
+                if right_value.parents.len() != 0 {
+                    debug!("Node {} is directly affected by the following nodes:", right_value.id);
+                    right_value.parents.iter().for_each(|node_id| 
+                        debug!("    Node {}: {}", *node_id, self.nodes[*node_id])
+                    );
+                } else {
+                    debug!("Node {} is an input node.", right_value.id);
+                }
+                
                 return false;
             }
         }
