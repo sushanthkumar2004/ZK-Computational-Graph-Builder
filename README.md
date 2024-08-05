@@ -43,6 +43,7 @@ fn main() {
     builder.fill_nodes();
 }
 ```
+The ```fill_nodes``` method allows the rest of the graph to be filled out in parallel according to the input nodes.
 ## Hints and Constraint Checking
 Constraints in the circuit are a set of equality assertions between nodes. The equality assertions can be used to constrain possible values of the circuit and to also check that computations are correct. These are called by declaring ```rust builder.assert_equal(node1, node2)```. Calling ```builder.check_constraints().await``` after filling out the graph will verify that the assertions pass as expected. Note however that since the ```check_constraints``` method is asynchronous it is actually possible to call ```check_constraints``` before actually filling out the circuit. 
 
@@ -94,7 +95,7 @@ async fn main() {
     builder.check_constraints().await
 }
 ```
-
+The ```check_constraints``` method was made asynchronous to allow for assertions to be checked as the graph was being filled out. 
 ## Debugging
 The ```check_constraints``` function evaluates constraints in the order that they are specified, and execution halts at the first failed constraint. When the constraint fails, debug information is printed out to the logs. This includes information for the two nodes that failed the equality constraint and the nodes directly influencing the value of the left and right nodes. 
 ```rust
@@ -118,7 +119,7 @@ async fn main() {
     builder.check_constraints().await
 }
 ```
-THe debug information reveals the method used to evaluate the left and right nodes as well. 
+The debug information reveals the method used to evaluate the left and right nodes as well. 
 ```
 [2024-08-05T10:54:12Z DEBUG takehome::builder] Equality failed at nodes with id's 5, 3
 [2024-08-05T10:54:12Z DEBUG takehome::builder] Node 5 contains Node { value: 16, depth: 1, id: 5, parents: [4, 2], derivation: Multiplication Gate }
