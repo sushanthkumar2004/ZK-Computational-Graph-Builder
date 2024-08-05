@@ -85,3 +85,35 @@ fn test_builder_invalid_set() {
     builder.set(z.clone(), 20); 
     z.get();
 }
+
+#[tokio::test]
+async fn test_constraints_satisfied() {
+    let mut builder = Builder::new();
+
+    let x = builder.init();
+    let y = builder.init();
+
+    builder.assert_equal(x.clone(), y.clone());
+
+    builder.set(x, 10); 
+    builder.set(y, 10); 
+
+    let constraint_check = builder.check_constraints().await;
+    assert!(constraint_check)
+}
+
+#[tokio::test]
+async fn test_constraints_unsatisfied() {
+    let mut builder = Builder::new();
+
+    let x = builder.init();
+    let y = builder.init();
+
+    builder.assert_equal(x.clone(), y.clone());
+
+    builder.set(x, 10); 
+    builder.set(y, 20); 
+
+    let constraint_check = builder.check_constraints().await;
+    assert!(!constraint_check)
+}
