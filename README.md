@@ -1,165 +1,105 @@
 # Computational Graph Builder
-A simple class to allow users to build a computational graph with support for concurrency and asynchronous functions. Example usage is shown below: 
+A computational graph builder that allows designs of circuits involving addition, multiplication, equality assertions and hints. Supports concurrency and asynchronous equality constraint checking. 
+## Specifying Inputs, Constants and Gates
+When building a computational graph, start by calling the ```Builder::new()``` method, which creates an empty circuit. One can specify input nodes to the circuit by calling ```builder.init()```, which returns a node pointer and creates an input node in circuit. One can also create constant nodes by using the ```builder.constant(val: u32)``` method, and addition/multiplication gates can be specified as shown below. 
 ```rust
-// declare a galois field of order 65537 (only supports fields of prime order)
-pub type Fp = GaloisField::<65537>;
-
 fn main() {
-    let mut builder = Builder::<Fp>::new(); 
+    // Example 1: f(x) = x^2 + x + 5
+  
+    // instantiates an empty circuit with no nodes
+    let mut builder = Builder::new();
 
-    // declare an input wire. 
+    // NOTE: nodes here are cloned since Rust consumes
+    // the provided arguments to these functions. 
+
+    // create an input node to the circuit
+    // value of the input node must be specified later
+    // in order for the fill_nodes() method to properly
+    // compute values. 
     let x = builder.init();
 
-    // build a multiplier gate
-    let x_squared = builder.mul(&x, &x);
+    // create a multiplication gate using the mul method
+    // that creates a new node in the circuit containing
+    // the product of the two input nodes (which in this
+    // case is x). 
+    let x_squared = builder.mul(x.clone(), x.clone());
 
-    // declare a constant node
-    let five = builder.constant(Fp::from(5));
+    // create a constant value in the circuit that can be
+    // used in later computations 
+    let five = builder.constant(5);
 
-    // declare adder gates 
-    let x_squared_plus_5 = builder.add(&x_squared, &five);
-    let y = builder.add(&x_squared_plus_5, &x);
+    // create two addition gates 
+    let x_squared_plus_5 = builder.add(x_squared.clone(), five.clone());
+    let y = builder.add(x_squared_plus_5.clone(), x.clone());
 
-    // pass in values to the inputs in the order that they were created
-    builder.fill_nodes(vec![Fp::from(5)]);
-}
-```
-Refer to ```tests/builder_tests.rs``` to see how to add equality assertions and verify them in circuit. I also designed a slightly different API with a modified underlying implementation. Example usage is shown below:
-```rust
-pub type Fp = GaloisField::<65537>;
+    // set the value of the input nodes
+    // Note that if not all input nodes are filled out
+    // the builder will try to fill out nodes whose values
+    // can be derived and fail when it first encounters a node
+    // whose value depends on an unset input. 
+    builder.set(x.clone(), 5);
 
-fn test_basic_function() {
-    let mut builder = GraphBuilder::<Fp>::new();
-
-    let x = builder.init();
-    let x_squared = builder.mul(&x, &x);
-    
-    let five = builder.constant(Fp::from(5));
-    let x_squared_plus_5 = builder.add(&x_squared, &five);
-    let y = builder.add(&x_squared_plus_5, &x);
-
-    // the way to set values is a bit different
-    builder.set(&x, Fp::from(5));
-
-    // now fill_nodes() accepts no arguments
+    // fill out the graph based on the input nodes 
     builder.fill_nodes();
 }
 ```
+## Hints and Constraint Checking
+Constraints in the circuit are a set of equality assertions between nodes. The equality assertions can be used to constrain possible values of the circuit and to also check that computations are correct. These are called by declaring ```rust builder.assert_equal(node1, node2)```. Calling ```builder.check_constraints().await``` after filling out the graph will verify that the assertions pass as expected. Note however that since the ```check_constraints``` method is asynchronous it is actually possible to call ```check_constraints``` before actually filling out the circuit. 
 
-## Types of Builders.
-There are essentially three types of builders and they represent the three different stages I went through when designing. 
-
-* BuilderSingleThread: this was the first builder I wrote, so it was single threaded and does not use field elements.
-* Builder: An improvement to the BuilderSingleThread that adds support for multithreading and async constraint checking.
-* GraphBuilder: Maybe a performance improvement over Builder? This uses a vector to keep track of all nodes in the graph and has slightly more helpful debug messages. For the most part this is pretty similar to Builder, except the gates store a vector position rather than a node itself. 
-
-To see how to use BuilderSingleThread, refer to ```benchmarks.rs```. For the others look at their respective tests file. 
-
-## Asserting hints and equality constraints 
-To specify a hint you need to specify a vector-function (i.e. a function that accepts a vector of arguments of type ```F``` and outputs something of type ```F```) to be used for the hint. The API for this is the same between both builders. 
+Hints are API's provided by ```Builder``` to support operations other than addition and multiplication. Typical usage is to specify a vector function (function that takes ```rust Vec<u32>``` as input and outputs a ```rust u32```), and a vector of the argument nodes to apply the function on. Usually, one also adds an equality assertion on top of this to verify that the vector function correctly computed the values. Example usage is shown below:
 ```rust
-fn lambda_div8(val: Vec<Fp>) -> Fp {
-    assert_eq!(val.len(), 1);
-    val[0] / Fp::from(8)
+// A simple square root function that rounds to
+// the nearest integer.
+// To be used as a hint, the function argument
+// must be a vector of 32-bit integers and
+// output a 32 bit integer. 
+fn lambda_sqrt(val: Vec<u32>) -> u32 {
+    ((val[0] as f64).sqrt().round()) as u32
 }
 
-#[tokio::test]
-async fn test_hints() {
-    let mut builder = GraphBuilder::<Fp>::new();
-    let a = builder.init();
-    let one = builder.constant(Fp::from(1)); 
-    let eight = builder.constant(Fp::from(8));
+// To use the check_constraints method this must
+// be an async function 
+async fn main() {
+    // Example 3: f(x) = sqrt(x+7)
+    //
+    // Assume that x+7 is a perfect square (so x = 2 or 9, etc.).
 
-    let b = builder.add(&a, &one); 
+    let mut builder = Builder::new();
+    let x = builder.init();
+    let seven = builder.constant(7);
+    let x_plus_seven = builder.add(x.clone(), seven.clone());
 
-    let c = builder.hint(&[&b], lambda_div8);
-    let c_times_8 = builder.mul(&c, &eight);
+    // API for hints.
+    // The first argument is a slice containing a
+    // vector of nodes to be used as an input
+    // to the second argument, which is a
+    // user-provided vector function.
+    // The general syntax is builder.hint(&[nodes], function)
 
-    builder.set(&a, Fp::from(13));
+    // For example, this computes the square root of x+7
+    // by passing in the node x_plus_seven as an argument to
+    // lambda_sqrt. 
+    let sqrt_x_plus_7 = builder.hint(&[x_plus_seven.clone()], lambda_sqrt);
+    let computed_sq = builder.mul(sqrt_x_plus_7.clone(), sqrt_x_plus_7.clone());
 
+    // API for asserting equality between nodes
+    // Asserts equality between the left and right node.
+    // Requires calling check_constraints() to validate
+    // that the constraint is met. 
+    builder.assert_equal(computed_sq.clone(), x_plus_seven.clone());
+
+    builder.set(x.clone(), 2);
     builder.fill_nodes();
-    builder.assert_equal(&c_times_8, &b);
 
-    let constraint_check = builder.check_constraints().await; 
-
-    println!("{:?}", constraint_check); 
-    println!("{:?}", c_times_8);
-    println!("{:?}", b);
-}
-
-```
-Refer to the tests for more examples. 
-
-## Explanation of the Types
-Here are the different types, how to use them, and what purpose they serve. 
-
-### Galois Field Types
-To declare a Galois Field of order $p$, you can set ```pub type Fp = GaloisField::<p>;```. The code supports operator overloading for the four basic operations.
-```rust
-// declare a galois field of order 65537 (only supports fields of prime order)
-pub type Fp = GaloisField::<65537>;
-
-fn main() {
-    let x = Fp::from(54);
-    let y = Fp::from(12); 
-    let z  = x * y; 
-    println!("{:?}", z); 
+    builder.check_constraints().await
 }
 ```
 
-### Node Types
-Node types are specified as shown below:
-```rust
-#[derive(Clone, Default, Debug)]
-pub struct Node<F: Field> {
-    pub value: Option<F>,
-    pub depth: u64,
-    pub id: usize,
-}
-```
-The field ```value``` stores an option. Initially when nodes are initialized in the graph they all store ```None```. When ```fill_nodes()``` is called the null values are populated with the correct values. 
-### Gate Types
-These are the three types of gates supported by the builder.
-```rust
-// AddGate structure, which has two input nodes and one output node. 
-// LEFT_ID is the position of the left node in builder.nodes,
-// and RIGHT_ID is the position of the right node. 
-// DEPTH is defined as in the README. 
-#[derive(Debug)]
-pub struct AddGate {
-    left_id: usize,
-    right_id: usize,
-    output_id: usize,
-    depth: u64,
-}
+## Debugging
 
-#[derive(Debug)]
-pub struct MultiplyGate {
-    left_id: usize,
-    right_id: usize,
-    output_id: usize,
-    depth: u64,
-}
+TODO! 
 
-pub type Lambda<F> = fn(Vec<F>) -> F;
-
-// LambdaGate structure to define arbitary hints based on other node values
-// The function LAMBDA is used to determine the output.
-// INPUT_IDS takes all the id's of the inputs
-// OUTPUT_ID stores the id of the output
-// DEPTH is defined as in README.
-#[derive(Debug)]
-pub struct LambdaGate<F: Field> {
-    input_ids: Vec<usize>,
-    output_id: usize,
-    lambda: Lambda<F>,
-    depth: u64,
-}
-
-```
-The fields ```left_input``` and ```right_input``` represent the inputs to the adder gate and the multiplier gate, while ```output``` is either the sum of the values or the product. The argument ```depth``` is currently unused, but should be used to offer better debugging support. ```LambdaGate``` is a special type of gate, and is used to provide hints. The user can make ```Lambda<F>``` an arbitrarily complex function, but once all the inputs to the function are known the output is filled in. Usually ```LambdaGate``` should be paired with some sort of constraint since the output cannot be constrained (as the function may not map to addition and multiplication gates). 
-
-### Design Specification
+## Algorithms and Concurrency Approach 
 The order of execution is done in such a way to support parallelism. We declare all ```input``` and ```constant``` nodes to have depth $0$. Note that all other non-input and non-constant nodes must be the output of some gate. Suppose $r_1, r_2$ are inputs to gate $G$ with output $s$. Then, we declare
 $$\text{depth}(s)  = 1 + \text{max}(\text{depth}(r_1), \text{depth}(r_2)).$$
 Note that the only data dependencies occur when we increase depth. Thus, by staying in our "depth-level" we can use threads to evaluate all nodes on this level. A diagram is shown below for clarity. 
