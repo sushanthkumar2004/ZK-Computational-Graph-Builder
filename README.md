@@ -139,7 +139,8 @@ Evaluate nodes at increasing depths, starting from depth 0 and progressing seque
 <p align="center">
   <img src=./img/spec.jpg alt="Schematic" width="600">
 </p>
-#### Additional Considerations
+
+### Additional Considerations
 In general multiplication operations are slower than addition operations, and lambda gates can be arbitrarily simple or arbitrarily complex. Instead of splitting all the gates equally across the threads we should split all the different types of gates equally across the threads (this allows the workload across nodes to be more equal). The struct LevelGates keeps track of the gates at each level and seperates by types to facilitate this. 
 ```rust
 #[derive(Debug)]
