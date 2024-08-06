@@ -183,6 +183,106 @@ async fn test_sqrt_hints() {
 }
 
 #[tokio::test]
+async fn test_subtraction_hints() {
+    // Example 4: f(x, y) = x - y
+    //
+    // Assume that x >= y since otherwise an underflow error will occur
+
+    let mut builder = Builder::new();
+    let x = builder.init();
+    let y = builder.init();
+
+    fn lambda_sub(val: Vec<u32>) -> u32 {
+        val[0] - val[1]
+    }
+
+    // z will hold the value of x - y, and we will hint it
+    let z = builder.hint(&[x.clone(), y.clone()], lambda_sub); 
+
+    // we can constrain the value of z by declaring z + y = x
+    let z_plus_y = builder.add(z.clone(), y.clone()); 
+    builder.assert_equal(z_plus_y.clone(), x.clone()); 
+    
+    builder.set(x.clone(), 23);
+    builder.set(y.clone(), 7); 
+
+    builder.fill_nodes();
+    let constraints_check = builder.check_constraints().await; 
+
+    assert_eq!(x.get(), 23); 
+    assert_eq!(y.get(), 7); 
+    assert_eq!(z.get(), 16); 
+    assert_eq!(z_plus_y.get(), 23); 
+    assert!(constraints_check)
+}
+
+#[tokio::test]
+async fn test_two_bit_decomposition() {
+    // Example 4: f(z) = (b0, b1)
+    //
+    // Where b0, b1 is the unique tuple satisfying
+    // z = 2*b0 + b1
+    // 0<= b0, b1 <= 1
+    // Assuming that 0 <= z <= 3
+
+    let mut builder = Builder::new();
+    let z = builder.init();
+    
+    fn lambda_b0(val: Vec<u32>) -> u32 {
+        val[0] >> 1
+    }
+
+    fn lambda_b1(val: Vec<u32>) -> u32 {
+        val[0] % 2
+    }
+
+    fn lambda_1_minus_x(val: Vec<u32>) -> u32 {
+        1 - val[0] 
+    }
+
+    let b0 = builder.hint(&[z.clone()], lambda_b0); 
+    let b1 = builder.hint(&[z.clone()], lambda_b1); 
+    let b0_bar = builder.hint(&[b0.clone()], lambda_1_minus_x);
+    let b1_bar = builder.hint(&[b1.clone()], lambda_1_minus_x);
+
+    let one = builder.constant(1); 
+    let zero = builder.constant(0); 
+    let two = builder.constant(2); 
+
+    // this assertion is to verify b0 + bo_bar = 1, so that we can
+    // ensure that the circuit correctly constrains the value of b0_bar
+    let b0_sum = builder.add(b0_bar.clone(), b0.clone()); 
+    builder.assert_equal(b0_sum, one.clone());
+
+    let b1_sum = builder.add(b1_bar.clone(), b1.clone()); 
+    builder.assert_equal(b1_sum, one);
+
+    // this assertion is to verify b0 * bo_bar = 0, so that we can
+    // know that b0 is either 0 or 1 for sure. 
+    let b0_prod = builder.mul(b0_bar, b0.clone()); 
+    builder.assert_equal(b0_prod, zero.clone());
+    
+    let b1_prod = builder.mul(b1_bar, b1.clone()); 
+    builder.assert_equal(b1_prod, zero);
+
+    let b0_times_two = builder.mul(b0, two); 
+    let sum = builder.add(b0_times_two, b1);
+
+    // this is to verify 2*b0 + b1 = z,
+    // i.e. this verifies that the binary representation is correct. 
+    builder.assert_equal(sum, z.clone());
+
+    for i in 0..4 {
+        builder.set(z.clone(), i); 
+        builder.fill_nodes();
+
+        let constraint_check = builder.check_constraints().await; 
+        assert!(constraint_check);
+    }
+
+}
+
+#[tokio::test]
 async fn test_lambda_gates() {  
     let mut builder = Builder::new();
 
